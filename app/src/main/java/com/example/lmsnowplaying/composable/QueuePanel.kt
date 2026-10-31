@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -149,7 +148,7 @@ fun QueuePanel() {
                 Text(stringResource(R.string.queue_empty), color = Color.White.copy(alpha = 0.7f), fontSize = 14.sp, modifier = Modifier.padding(start = 12.dp))
             } else {
                 val imageLoader = rememberLmsImageLoader()
-                LazyColumn(state = listState) {
+                HintLazyColumn(state = listState) {
                     itemsIndexed(q.tracks) { _, track ->
                         val isCurrent = track.absoluteIndex == q.currentIndex
                         val label = if (track.artist.isNotBlank()) "${track.title} – ${track.artist}" else track.title

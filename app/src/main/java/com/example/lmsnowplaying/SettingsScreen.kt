@@ -1,6 +1,10 @@
 package com.example.lmsnowplaying
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,6 +20,13 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Icon
+import com.example.lmsnowplaying.composable.BackgroundMenuIcon
+import com.example.lmsnowplaying.composable.FilmstripIcon
+import com.example.lmsnowplaying.composable.ServerIcon
+import com.example.lmsnowplaying.composable.SettingsMenuIcon
+import com.example.lmsnowplaying.composable.StandbyMenuIcon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -77,18 +88,9 @@ fun SettingsScreen(
             .padding(horizontal = 80.dp, vertical = 40.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text(
-            text = stringResource(R.string.settings_title),
-            color = Color.White,
-            fontWeight = FontWeight.Bold,
-            style = MaterialTheme.typography.headlineSmall
-        )
+        SectionTitle(stringResource(R.string.settings_title), SettingsMenuIcon, MaterialTheme.typography.headlineSmall, FontWeight.Bold)
 
-        Text(
-            text = stringResource(R.string.settings_lms_section),
-            color = Color.White,
-            style = MaterialTheme.typography.titleMedium
-        )
+        SectionTitle(stringResource(R.string.settings_lms_section), ServerIcon, MaterialTheme.typography.titleMedium)
         OutlinedTextField(
             value = lmsUrl,
             onValueChange = { lmsUrl = it },
@@ -108,11 +110,7 @@ fun SettingsScreen(
             modifier = Modifier.fillMaxWidth()
         )
 
-        Text(
-            text = stringResource(R.string.settings_jellyfin_section),
-            color = Color.White,
-            style = MaterialTheme.typography.titleMedium
-        )
+        SectionTitle(stringResource(R.string.settings_jellyfin_section), FilmstripIcon, MaterialTheme.typography.titleMedium)
         OutlinedTextField(
             value = jellyfinUrl,
             onValueChange = { jellyfinUrl = it },
@@ -138,11 +136,7 @@ fun SettingsScreen(
             modifier = Modifier.fillMaxWidth()
         )
 
-        Text(
-            text = stringResource(R.string.settings_background_section),
-            color = Color.White,
-            style = MaterialTheme.typography.titleMedium
-        )
+        SectionTitle(stringResource(R.string.settings_background_section), BackgroundMenuIcon, MaterialTheme.typography.titleMedium)
         val backgroundOptions = listOf(
             SettingsRepository.BACKGROUND_STYLE_ARTIST to stringResource(R.string.settings_background_artist),
             SettingsRepository.BACKGROUND_STYLE_ARTIST_GRAYSCALE to stringResource(R.string.settings_background_artist_grayscale),
@@ -161,15 +155,24 @@ fun SettingsScreen(
             }
         }
 
+        val standbySource = remember { MutableInteractionSource() }
+        val standbyFocused by standbySource.collectIsFocusedAsState()
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(if (standbyFocused) Color.White.copy(alpha = 0.25f) else Color.Transparent)
+                .padding(horizontal = 8.dp, vertical = 4.dp)
         ) {
             Switch(
                 checked = standbyOnExit,
-                onCheckedChange = { standbyOnExit = it }
+                onCheckedChange = { standbyOnExit = it },
+                interactionSource = standbySource
             )
+            Icon(imageVector = StandbyMenuIcon, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
             Text(
                 text = stringResource(R.string.settings_standby_on_exit_label),
                 color = Color.White
@@ -219,5 +222,19 @@ fun SettingsScreen(
             }
         }
     }
+    }
+}
+
+// Section heading with an icon in front of it.
+@Composable
+private fun SectionTitle(
+    text: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    style: androidx.compose.ui.text.TextStyle,
+    weight: FontWeight? = null,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Icon(imageVector = icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
+        Text(text = text, color = Color.White, fontWeight = weight, style = style)
     }
 }

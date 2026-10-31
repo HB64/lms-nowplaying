@@ -35,6 +35,8 @@ data class BrowseItem(
     // For albums: id of a track whose cover represents the album (used for
     // thumbnails); empty when unknown.
     val artworkId: String = "",
+    // Second line in search results (artist); empty when unknown.
+    val subtitle: String = "",
 )
 
 // Repeat / shuffle / Don't Stop The Music state of a player.
@@ -53,7 +55,7 @@ enum class MixPlugin(val label: String) {
     MIPSTER("MIPster"),
     RANDOMFLOW("Random Flow"),
     RANDOMPLAY("Random Mix"),
-    DSTM("Don't Stop The Music"),
+    DSTM("DSTM"),
 }
 
 enum class MixAction { START_MIX, START_BATCH, ADD_BATCH }
@@ -76,6 +78,15 @@ data class FavoriteEntry(
     val id: String,
     val name: String,
     val isFolder: Boolean,
+    val icon: String = "",
+    val isSearch: Boolean = false,
+)
+
+// An entry of Lyrion's Radio menu: the plugin's command and its display name.
+data class RadioEntry(
+    val cmd: String,
+    val name: String,
+    val isSearch: Boolean = false,
 )
 
 // Result of a library search: matching artists, albums and tracks.
@@ -93,7 +104,41 @@ data class BrowseTrack(
     val trackNum: Int,
     // Cover id for thumbnails; empty when unknown.
     val coverId: String = "",
+    // Second line in search results ("artist · album"); empty when unknown.
+    val subtitle: String = "",
 )
+
+// A setting shown as a slider where every value can be reached (min..max, in
+// steps of step), and the command that sets a value. fastStep is the step
+// while a key is held down; with noLimitAtMax the top position means "no limit".
+data class SliderSpec(
+    val min: Int,
+    val max: Int,
+    val value: Int,
+    val command: (Int) -> List<Any>,
+    val fastStep: Int = 5,
+    val noLimitAtMax: Boolean = false,
+    val step: Int = 1,
+)
+
+// One setting of a plugin's Jive menu: its choices, the command that selects
+// each choice, and which choice is current. Settings with a slider range
+// carry a SliderSpec as well. A setting whose choices come from a list the
+// plugin builds on request (Filter, Recipe, Mood) has the command that asks for
+// that list in listCommand, and is filled in by loadPluginList.
+data class PluginSetting(
+    val text: String,
+    val choices: List<String>,
+    val commands: List<List<Any>>,
+    val selected: Int,
+    val slider: SliderSpec? = null,
+    val listCommand: List<Any>? = null,
+) {
+    val display: String get() {
+        val current = choices.getOrNull(selected)
+        return if (current == null) text else "$text: $current"
+    }
+}
 
 object LMS{
 
@@ -121,6 +166,8 @@ object LMS{
 
     @Volatile
     var players: MutableList<Pair<String, String>> = arrayListOf()
+    // mac -> (model, model name) as reported by the server, for the player icons
+    var playerModels: Map<String, Pair<String, String>> = emptyMap()
         private set
 
     // A player that just went to standby, or whose app just closed, is
@@ -155,13 +202,16 @@ object LMS{
             // shared list in place let the menu (main thread) see an empty
             // or half-filled list while this runs on the IO thread.
             val fresh: MutableList<Pair<String, String>> = arrayListOf()
+            val freshModels = HashMap<String, Pair<String, String>>()
             for (i in 0 until loop.length()) {
                 val item = loop.getJSONObject(i)
                 val name = item.getString("name")
                 val player_mac = item.getString("playerid")
                 fresh.add(Pair(name, player_mac))
+                freshModels[player_mac] = Pair(item.optString("model", ""), item.optString("modelname", ""))
             }
             players = fresh
+            playerModels = freshModels
 
             println(players)
         }
@@ -409,12 +459,14 @@ object LMS{
         albumId: String? = null,
         trackId: String? = null,
         folderId: String? = null,
+        playlistId: String? = null,
     ): Boolean {
         if (playerMac == "00:00:00:00:00:00") return false
         val target = when {
             albumId != null -> "album_id:$albumId"
             trackId != null -> "track_id:$trackId"
             folderId != null -> "folder_id:$folderId"
+            playlistId != null -> "playlist_id:$playlistId"
             else -> return false
         }
         return safeCall("playlistControl($cmd)", false) {
@@ -697,23 +749,48 @@ object LMS{
             // Thumbnails: the search command carries no artwork info, so ask
             // for it separately with the same term and match by id. If either
             // lookup fails the rows simply have no picture.
-            val artworkByAlbum = try {
-                val loop = rpcLoop(listOf("albums", 0, count, "search:$term", "tags:lj"), "albums_loop")
+            val albumInfo = try {
+                val loop = rpcLoop(listOf("albums", 0, count, "search:$term", "tags:lja"), "albums_loop")
                 (0 until loop.length()).associate {
                     val o = loop.getJSONObject(it)
-                    o.optString("id") to o.optString("artwork_track_id")
+                    o.optString("id") to Pair(o.optString("artwork_track_id"), o.optString("artist"))
                 }
             } catch (e: Exception) { emptyMap() }
-            val coverByTrack = try {
-                val loop = rpcLoop(listOf("titles", 0, count, "search:$term", "tags:c"), "titles_loop")
+            val trackInfo = try {
+                val loop = rpcLoop(listOf("titles", 0, count, "search:$term", "tags:caltem"), "titles_loop")
                 (0 until loop.length()).associate {
                     val o = loop.getJSONObject(it)
-                    o.optString("id") to o.optString("coverid")
+                    val sub = listOf(o.optString("artist"), o.optString("album")).filter { s -> s.isNotEmpty() }
+                    o.optString("id") to Triple(o.optString("coverid"), sub.joinToString(" · "), o.optInt("tracknum", 0))
                 }
             } catch (e: Exception) { emptyMap() }
 
-            val albumsOut = albums.map { it.copy(artworkId = artworkByAlbum[it.id] ?: "") }
-            val tracksOut = tracks.map { it.copy(coverId = coverByTrack[it.id] ?: "") }
+            // Albums that contain a matching track: show that track instead of
+            // the artist, so the right album is recognised at a glance.
+            val matchByAlbum = HashMap<String, MutableList<String>>()
+            try {
+                val loop = rpcLoop(listOf("titles", 0, count, "search:$term", "tags:caltem"), "titles_loop")
+                for (k in 0 until loop.length()) {
+                    val o = loop.getJSONObject(k)
+                    val alb = o.optString("album_id")
+                    if (alb.isEmpty()) continue
+                    val n = o.optInt("tracknum", 0)
+                    val line = (if (n > 0) "$n • " else "") + o.optString("title") +
+                        o.optString("artist").let { a -> if (a.isNotEmpty()) " · $a" else "" }
+                    matchByAlbum.getOrPut(alb) { mutableListOf() }.add(line)
+                }
+            } catch (e: Exception) { }
+            val albumsOut = albums.map {
+                val i = albumInfo[it.id]
+                val m = matchByAlbum[it.id]
+                val sub = if (m.isNullOrEmpty()) i?.second ?: ""
+                    else m[0] + (if (m.size > 1) " (+${m.size - 1})" else "")
+                it.copy(artworkId = i?.first ?: "", subtitle = sub)
+            }
+            val tracksOut = tracks.map {
+                val i = trackInfo[it.id]
+                it.copy(coverId = i?.first ?: "", subtitle = i?.second ?: "", trackNum = i?.third ?: 0)
+            }
             SearchResults(artists, albumsOut, tracksOut)
         }
     }
@@ -725,6 +802,8 @@ object LMS{
     @Volatile
     var lastDstmProvider: String = ""
 
+    const val RNP_CMD = "radionowplaying"
+
     private suspend fun rpcPlayer(mac: String, command: List<Any>): JSONObject {
         val cmd = JSONArray()
         command.forEach { cmd.put(it) }
@@ -734,6 +813,233 @@ object LMS{
         val res = lmsApi.rpc(requestBody)
         val jsonData: String? = res.body()?.string()
         return JSONObject(jsonData).optJSONObject("result") ?: JSONObject()
+    }
+
+    // Raw result of any plugin command for the current player (used by the
+    // plugin menu screens). Null when no player is selected or the call fails.
+    suspend fun pluginMenu(command: List<Any>): JSONObject? {
+        val mac = playerMac
+        if (mac == "00:00:00:00:00:00") return null
+        return safeCall<JSONObject?>("pluginMenu", null) { rpcPlayer(mac, command) }
+    }
+
+    private data class SliderDef(
+        val min: Int,
+        val max: Int,
+        val key: String?,
+        val fastStep: Int = 5,
+        val noLimitAtMax: Boolean = false,
+        val step: Int = 1,
+    )
+
+    // Random Flow settings that get a slider with every value reachable (its
+    // menu itself only offers steps of 10 and the like): set command -> range,
+    // and the key holding the exact value in its "mixsettings" answer (null:
+    // not in there, the menu's own value is used).
+    private val randomFlowSliders = mapOf(
+        "setwobble" to SliderDef(0, 100, "wobble"),
+        "setartistcooldown" to SliderDef(0, 100, "artistCooldownTracks"),
+        "setalbumcooldown" to SliderDef(0, 100, "albumCooldownTracks"),
+        "setmaxplaycount" to SliderDef(0, 50, "maxPlaycount", noLimitAtMax = true),
+        "setbatchsize" to SliderDef(10, 100, null),
+        "setpoolsize" to SliderDef(10, 2000, null, fastStep = 20),
+    )
+
+    // MIPster settings with a slider (the ranges of its Live View): the name of
+    // the setting -> range. The exact value is read from the player's prefs.
+    private val mipsterSliders = mapOf(
+        "chainSize" to SliderDef(10, 300, null, fastStep = 10),
+        "chainRejectsize" to SliderDef(0, 30, null),
+        "chainStyle" to SliderDef(0, 200, null, fastStep = 20, step = 20),
+        "chainVariety" to SliderDef(0, 9, null),
+    )
+
+    // SugarCube settings with a slider (the ranges of its Live View), same
+    // idea as MIPster's. Its Mix style moves in steps of 1.
+    private val sugarCubeSliders = mapOf(
+        "sugarcube_size" to SliderDef(10, 300, null, fastStep = 10),
+        "sugarcube_rejectsize" to SliderDef(0, 30, null),
+        "sugarcube_style" to SliderDef(0, 200, null, fastStep = 10),
+        "sugarcube_variety" to SliderDef(0, 9, null),
+    )
+
+    // Random Mix types (command word, shown name); the chosen one is kept in the
+    // app and used by "Start new mix".
+    private val randomMixTypes = listOf(
+        "tracks" to "Tracks", "albums" to "Albums", "contributors" to "Artists",
+        "work" to "Works", "year" to "Years",
+    )
+    const val APP_MIX_TYPE = "app:mixtype"
+    @Volatile
+    private var randomMixType: String = "tracks"
+    val currentRandomMixType: String get() = randomMixType
+
+    // The settings of a mix plugin, read from its own Jive menu on the server.
+    suspend fun pluginSettings(plugin: MixPlugin): List<PluginSetting> = when (plugin) {
+        MixPlugin.RANDOMFLOW -> {
+            val exact = pluginMenu(listOf("randomflow", "mixsettings"))
+            jiveSettings(
+                menuCommand = listOf("randomflow", "menu"),
+                settingId = { cmd -> cmd.getOrNull(1) as? String },
+                skip = setOf("setautomix"),
+                defs = randomFlowSliders,
+                exactValue = { _, def ->
+                    val key = def.key
+                    if (key != null && exact != null && exact.has(key)) {
+                        // A null value means "no limit" (Max play count)
+                        if (exact.isNull(key)) def.max else exact.optInt(key)
+                    } else null
+                },
+                command = { cmd, _, def ->
+                    { v: Int -> if (def.noLimitAtMax && v == def.max) cmd.take(2) + "none" else cmd.take(2) + v }
+                },
+            )
+        }
+        MixPlugin.SUGARCUBE -> {
+            val mac = playerMac
+            val base = jiveSettings(
+                menuCommand = listOf("sugarcube", "menu"),
+                // Its commands look like: sugarcube setting sugarcube_size:50
+                settingId = { cmd -> (cmd.getOrNull(2) as? String)?.substringBefore(":") },
+                skip = setOf("sugarcube_status", "sugarcube_sleep"),
+                defs = sugarCubeSliders,
+                exactValue = { id, _ -> playerPref(mac, "plugin.SugarCube:$id").toIntOrNull() },
+                command = { _, id, _ -> { v: Int -> listOf("sugarcube", "setting", "$id:$v") } },
+            )
+            // Wobble is a player setting of SugarCube but not in its menu; set through the player pref
+            if (base.isEmpty() || base.any { st -> st.commands.any { c -> c.any { it.toString().contains("sugarcube_wobble") } } }) base
+            else {
+                val labels = listOf("Disabled", "Tight (first 3)", "Medium (first 5)", "Loose (any)", "Floating (random)")
+                val current = playerPref(mac, "plugin.SugarCube:sugarcube_wobble").toIntOrNull() ?: 0
+                base + PluginSetting("Wobble", labels,
+                    labels.indices.map { listOf<Any>("playerpref", "plugin.SugarCube:sugarcube_wobble", it) },
+                    current.coerceIn(0, labels.size - 1))
+            }
+        }
+        MixPlugin.MIPSTER -> {
+            val mac = playerMac
+            jiveSettings(
+                menuCommand = listOf("mipster", "menu"),
+                // Its commands look like: mipster setting chainSize:50
+                settingId = { cmd -> (cmd.getOrNull(2) as? String)?.substringBefore(":") },
+                skip = setOf("chainStatus", "sleepStatus"),
+                defs = mipsterSliders,
+                exactValue = { id, _ -> playerPref(mac, "plugin.mipster:$id").toIntOrNull() },
+                command = { _, id, _ -> { v: Int -> listOf("mipster", "setting", "$id:$v") } },
+            )
+        }
+        MixPlugin.RANDOMPLAY -> {
+            // Random Mix has no menu of its own for these; they are server preferences
+            val mac = playerMac
+            val typeRow = PluginSetting("Mix type", randomMixTypes.map { it.second },
+                randomMixTypes.map { listOf<Any>(APP_MIX_TYPE, it.first) },
+                randomMixTypes.indexOfFirst { it.first == randomMixType }.coerceAtLeast(0))
+            val libraryRow = PluginSetting("Library", emptyList(), emptyList(), -1, null,
+                listOf("randomplaylibrarylist", 0, 100))
+            listOf(typeRow) + listOf(Triple("newtracks", "New tracks", 1..100), Triple("oldtracks", "Old tracks", 0..100)).mapNotNull { (key, text, range) ->
+                val value = rpcPlayer(mac, listOf("pref", "plugin.randomplay:$key", "?"))
+                    .optString("_p2", "").toIntOrNull() ?: return@mapNotNull null
+                PluginSetting(text, emptyList(), emptyList(), -1,
+                    SliderSpec(range.first, range.last, value.coerceIn(range.first, range.last),
+                        { v: Int -> listOf("pref", "plugin.randomplay:$key", v) }))
+            } + libraryRow
+        }
+        else -> emptyList()
+    }
+
+    // The setting rows of a plugin's Jive menu. Rows without choices (the
+    // action buttons and sub lists) and the Auto Mix switch are skipped.
+    private suspend fun jiveSettings(
+        menuCommand: List<Any>,
+        settingId: (List<Any>) -> String?,
+        skip: Set<String>,
+        defs: Map<String, SliderDef>,
+        exactValue: suspend (String, SliderDef) -> Int?,
+        command: (List<Any>, String, SliderDef) -> ((Int) -> List<Any>),
+    ): List<PluginSetting> {
+        val loop = pluginMenu(menuCommand)?.optJSONArray("item_loop") ?: return emptyList()
+        val settings = mutableListOf<PluginSetting>()
+        for (i in 0 until loop.length()) {
+            val item = loop.optJSONObject(i) ?: continue
+            // A row that opens a list (Filter, Recipe, Mood); the list itself is loaded later
+            val goCmd = item.optJSONObject("actions")?.optJSONObject("go")?.optJSONArray("cmd")
+            if (goCmd != null && item.optJSONArray("choiceStrings") == null) {
+                settings.add(PluginSetting(item.optString("text"), emptyList(), emptyList(), -1, null,
+                    (0 until goCmd.length()).map { goCmd.get(it) }))
+                continue
+            }
+            val choiceStrings = item.optJSONArray("choiceStrings") ?: continue
+            val choiceCmds = item.optJSONObject("actions")?.optJSONObject("do")
+                ?.optJSONArray("choices") ?: continue
+            val commands = (0 until choiceCmds.length()).map { c ->
+                val cmd = choiceCmds.optJSONObject(c)?.optJSONArray("cmd") ?: JSONArray()
+                (0 until cmd.length()).map { cmd.get(it) }
+            }
+            val id = commands.firstOrNull()?.let(settingId)
+            if (id != null && id in skip) continue
+            val choices = (0 until choiceStrings.length()).map { choiceStrings.optString(it) }
+            val selected = item.optInt("selectedIndex", 1) - 1
+            val def = if (id != null) defs[id] else null
+            val slider = if (def != null && id != null) {
+                val exact = exactValue(id, def)
+                val value = when {
+                    exact != null -> exact
+                    def.noLimitAtMax && selected <= 0 -> def.max
+                    else -> choices.getOrNull(selected)?.toIntOrNull() ?: def.min
+                }
+                SliderSpec(def.min, def.max, value.coerceIn(def.min, def.max),
+                    command(commands.first(), id, def), def.fastStep, def.noLimitAtMax, def.step)
+            } else null
+            settings.add(PluginSetting(item.optString("text"), choices, commands, selected, slider))
+        }
+        return settings
+    }
+
+    // Fills in a setting that opens a list (Filter, Recipe, Mood): asks the plugin
+    // for the list, with the current choice marked "radio". Returns the setting
+    // unchanged when the list can't be read.
+    suspend fun loadPluginList(setting: PluginSetting): PluginSetting {
+        val cmd = setting.listCommand ?: return setting
+        val loop = pluginMenu(cmd)?.optJSONArray("item_loop") ?: return setting
+        val choices = mutableListOf<String>()
+        val commands = mutableListOf<List<Any>>()
+        var selected = -1
+        for (i in 0 until loop.length()) {
+            val item = loop.optJSONObject(i) ?: continue
+            val itemCmd = item.optJSONObject("actions")?.optJSONObject("do")
+                ?.optJSONArray("cmd") ?: continue
+            if (selected < 0 && item.optInt("radio", 0) == 1) selected = choices.size
+            choices.add(item.optString("text"))
+            commands.add((0 until itemCmd.length()).map { itemCmd.get(it) })
+        }
+        return setting.copy(choices = choices, commands = commands, selected = selected)
+    }
+
+    // Random Mix genres with their on/off state (a genre that is on is mixed).
+    suspend fun loadGenres(): List<Pair<String, Boolean>> {
+        val loop = pluginMenu(listOf("randomplaygenrelist", 0, 1000))?.optJSONArray("item_loop")
+            ?: return emptyList()
+        return (0 until loop.length()).mapNotNull { i ->
+            val item = loop.optJSONObject(i) ?: return@mapNotNull null
+            if (!item.has("checkbox")) null else item.optString("text") to (item.optInt("checkbox") == 1)
+        }
+    }
+
+    suspend fun setGenre(genre: String, on: Boolean) =
+        runPluginCommand(listOf("randomplaychoosegenre", genre, if (on) 1 else 0))
+
+    suspend fun setAllGenres(on: Boolean) =
+        runPluginCommand(listOf("randomplaygenreselectall", if (on) 1 else 0))
+
+    // Runs one of a plugin menu's commands (a choice of a setting) for the current player.
+    suspend fun runPluginCommand(command: List<Any>) {
+        if (command.firstOrNull() == APP_MIX_TYPE) {
+            randomMixType = command.getOrNull(1) as? String ?: "tracks"
+            return
+        }
+        val mac = playerMac
+        if (mac == "00:00:00:00:00:00") return
+        safeCall("runPluginCommand", Unit) { rpcPlayer(mac, command); Unit }
     }
 
     suspend fun getPlayModes(): PlayModes? {
@@ -918,11 +1224,11 @@ object LMS{
             MixPlugin.SUGARCUBE -> rpcPlayer(mac, listOf("sugarcube", "setting", "sugarcube_status:$flag"))
             MixPlugin.MIPSTER -> rpcPlayer(mac, listOf("mipster", "setting", "chainStatus:$flag"))
             MixPlugin.RANDOMFLOW -> rpcPlayer(masterMac(mac), listOf("randomflow", "setautomix", flag))
-            // Switching Random Mix on starts a mix of random songs right away
+            // Random Mix has no "on but idle" state of its own, so switching it
+            // on only marks it in the app; the mix starts with "Start new mix".
             MixPlugin.RANDOMPLAY -> {
-                rpcPlayer(mac, listOf("randomplay", if (enable) "tracks" else "disable"))
-                // Lyrion doesn't report a mix that was started this way as
-                // active, so the app keeps track of it itself.
+                if (enable) rpcPlayer(mac, listOf("pref", "plugin.randomplay:continuous", "1"))
+                else rpcPlayer(mac, listOf("randomplay", "disable"))
                 randomMixMac = if (enable) mac else null
             }
             MixPlugin.DSTM -> {
@@ -951,6 +1257,15 @@ object LMS{
         }
     }
 
+    // Whether the server knows a command (an older plugin version may not).
+    suspend fun hasCommand(command: List<String>): Boolean {
+        val mac = playerMac
+        if (mac == "00:00:00:00:00:00") return true
+        return safeCall("hasCommand", true) {
+            rpcPlayer(mac, listOf("can") + command + "?").optInt("_can", 1) == 1
+        }
+    }
+
     // Starts a new mix / starts a batch / adds a batch with the given
     // plugin (not available for Don't Stop The Music).
     suspend fun mixAction(plugin: MixPlugin, action: MixAction) {
@@ -959,7 +1274,8 @@ object LMS{
         safeCall("mixAction", Unit) {
             when (plugin) {
                 MixPlugin.SUGARCUBE -> rpcPlayer(mac, listOf("sugarcube", when (action) {
-                    MixAction.START_MIX -> "startchain"
+                    // Older SugarCube versions call it "startmix" and have no batches
+                    MixAction.START_MIX -> if (hasCommand(listOf("sugarcube", "startchain"))) "startchain" else "startmix"
                     MixAction.START_BATCH -> "startbatch"
                     MixAction.ADD_BATCH -> "addbatch"
                 }))
@@ -974,7 +1290,10 @@ object LMS{
                     MixAction.ADD_BATCH -> "topup"
                 }))
                 MixPlugin.RANDOMPLAY ->
-                    if (action == MixAction.START_MIX) rpcPlayer(mac, listOf("randomplay", "tracks"))
+                    if (action == MixAction.START_MIX) {
+                        rpcPlayer(mac, listOf("randomplay", randomMixType))
+                        randomMixMac = mac
+                    }
                 MixPlugin.DSTM -> Unit
             }
             Unit
@@ -1006,17 +1325,82 @@ object LMS{
         }
     }
 
-    // Plays or queues a favorite (or a whole folder of them) on the current player:
+    // Plays or queues a favorite (or an item of another plugin, e.g. radio) on the current player:
     //   cmd "load" (replace the queue and play), "insert" (play next), "add" (at the end)
-    suspend fun favoritesControl(cmd: String, itemId: String): Boolean {
+    suspend fun favoritesControl(cmd: String, itemId: String, plugin: String = "favorites"): Boolean {
         if (playerMac == "00:00:00:00:00:00") return false
         return safeCall("favoritesControl($cmd)", false) {
             if (cmd == "load") power(true)
             val lmsCmd = if (cmd == "load") "play" else cmd
-            val reqString = "{\"method\": \"slim.request\", \"params\": [\"$playerMac\", [\"favorites\",\"playlist\",\"$lmsCmd\",\"item_id:$itemId\"]]}"
+            val reqString = "{\"method\": \"slim.request\", \"params\": [\"$playerMac\", [\"$plugin\",\"playlist\",\"$lmsCmd\",\"item_id:$itemId\"]]}"
             val requestBody = reqString.toRequestBody("application/json".toMediaTypeOrNull())
             lmsApi.playlistControl(requestBody)
             true
+        }
+    }
+
+    // The Radio menu of the server. Radio Now Playing goes first, and is added
+    // when the plugin exists but is not listed there (menu location "My Apps").
+    suspend fun getRadios(): List<RadioEntry> {
+        return safeCall("getRadios", emptyList()) {
+            val res = pluginMenu(listOf("radios", 0, 200))
+            // The loop name differs per server version, so take the list whose entries have a "cmd"
+            var loop = JSONArray()
+            res?.keys()?.forEach { key ->
+                val arr = res.optJSONArray(key)
+                if (arr != null && arr.length() > 0 && arr.optJSONObject(0)?.has("cmd") == true) loop = arr
+            }
+            val listed = (0 until loop.length()).mapNotNull {
+                val o = loop.getJSONObject(it)
+                val cmd = o.optString("cmd")
+                val name = o.optString("name")
+                if (cmd.isBlank() || name.isBlank()) null else RadioEntry(cmd, name, o.optString("type") == "xmlbrowser_search")
+            }
+            val rnp = listed.firstOrNull { it.cmd == RNP_CMD }
+                ?: if (hasCommand(listOf(RNP_CMD, "items"))) RadioEntry(RNP_CMD, "Radio Now Playing") else null
+            if (rnp == null) listed else listOf(rnp) + listed.filter { it.cmd != RNP_CMD }
+        }
+    }
+
+    // One level of a radio plugin. An empty parentId means its top level.
+    suspend fun getRadioItems(cmd: String, parentId: String, count: Int = 1000, search: String? = null): List<FavoriteEntry> {
+        return safeCall("getRadioItems", emptyList()) {
+            val command = mutableListOf<Any>(cmd, "items", 0, count)
+            if (parentId.isNotBlank()) command.add("item_id:$parentId")
+            if (search != null) command.add("search:$search")
+            val loop = pluginMenu(command)?.optJSONArray("loop_loop") ?: JSONArray()
+            (0 until loop.length()).mapNotNull {
+                val o = loop.getJSONObject(it)
+                val id = o.optString("id")
+                val name = o.optString("name")
+                val icon = o.optString("image").ifBlank { o.optString("icon") }
+                if (id.isBlank() || name.isBlank()) null
+                else FavoriteEntry(id, name, o.optInt("hasitems", 0) > 0, icon, o.optString("type") == "search")
+            }
+        }
+    }
+
+    // The saved playlists of the server.
+    suspend fun getPlaylists(count: Int = 1000): List<BrowseItem> {
+        return safeCall("getPlaylists", emptyList()) {
+            val loop = rpcLoop(listOf("playlists", 0, count), "playlists_loop")
+            (0 until loop.length()).map {
+                val o = loop.getJSONObject(it)
+                BrowseItem(o.optString("id"), o.optString("playlist"))
+            }
+        }
+    }
+
+    // The tracks of one saved playlist, in playlist order.
+    suspend fun getPlaylistTracks(playlistId: String, count: Int = 1000): List<Pair<BrowseTrack, String>> {
+        return safeCall("getPlaylistTracks", emptyList()) {
+            val loop = rpcLoop(listOf("playlists", "tracks", 0, count, "playlist_id:$playlistId", "tags:talc"), "playlisttracks_loop")
+            (0 until loop.length()).map {
+                val o = loop.getJSONObject(it)
+                // The second part is the line below the title: artist and album
+                BrowseTrack(o.optString("id"), o.optString("title"), it + 1, o.optString("coverid")) to
+                    listOf(o.optString("artist"), o.optString("album")).filter { s -> s.isNotBlank() }.joinToString(" · ")
+            }
         }
     }
 
@@ -1106,7 +1490,7 @@ object LMS{
 
     suspend fun getTracks(albumId: String, count: Int = 200): List<BrowseTrack> {
         return safeCall("getTracks", emptyList()) {
-            val reqString = "{\"method\": \"slim.request\", \"params\": [\"\", [\"titles\", 0, $count, \"album_id:$albumId\", \"sort:tracknum\", \"tags:t\"]]}"
+            val reqString = "{\"method\": \"slim.request\", \"params\": [\"\", [\"titles\", 0, $count, \"album_id:$albumId\", \"sort:tracknum\", \"tags:ta\"]]}"
             val requestBody = reqString.toRequestBody("application/json".toMediaTypeOrNull())
             val res = lmsApi.browseTracks(requestBody)
             val jsonData: String? = res.body()?.string()
@@ -1116,7 +1500,7 @@ object LMS{
             val list = mutableListOf<BrowseTrack>()
             for (i in 0 until loop.length()) {
                 val item = loop.getJSONObject(i)
-                list.add(BrowseTrack(item.optString("id"), item.optString("title"), item.optInt("tracknum", 0)))
+                list.add(BrowseTrack(item.optString("id"), item.optString("title"), item.optInt("tracknum", 0), subtitle = item.optString("artist")))
             }
             list
         }

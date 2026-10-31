@@ -2,8 +2,11 @@ package com.example.lmsnowplaying.composable
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,7 +34,17 @@ fun PlayerSelector(pn: String){
     {
 
         Surface(color = Color.Transparent) {
-            Text(text = _playerName, color = Color.White.copy(alpha = 0.7f), fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            val models = LMS.playerModels[LMS.playerMac]
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = playerIcon(models?.first ?: "", models?.second ?: ""),
+                    contentDescription = null,
+                    tint = Color.White.copy(alpha = 0.7f),
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(text = _playerName, color = Color.White.copy(alpha = 0.7f), fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            }
         }
         MyUI()
     }

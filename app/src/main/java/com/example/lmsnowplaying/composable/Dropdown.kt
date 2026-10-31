@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -275,14 +276,29 @@ fun MyUI() {
             ) {
                 data.forEachIndexed { itemIndex, itemValue ->
                     val isDefault = defaultMac == itemValue.second
-                    Text(
-                        text = (if (isDefault) "☑ " else "☐ ") + itemValue.first,
-                        color = Color.White,
+                    val models = LMS.playerModels[itemValue.second]
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .fillMaxWidth()
                             .background(if (highlightedIndex == itemIndex) Color.White.copy(alpha = 0.3f) else Color.Transparent)
                             .padding(horizontal = 16.dp, vertical = 10.dp)
-                    )
+                    ) {
+                        Icon(
+                            imageVector = playerIcon(models?.first ?: "", models?.second ?: ""),
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            text = itemValue.first,
+                            color = Color.White,
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(horizontal = 10.dp)
+                        )
+                        Text(text = if (isDefault) "☑" else "☐", color = Color.White)
+                    }
                 }
 
                 val backgroundLabel = when (backgroundStyle) {
@@ -291,37 +307,43 @@ fun MyUI() {
                     SettingsRepository.BACKGROUND_STYLE_ARTIST_GRAYSCALE -> stringResource(R.string.settings_background_artist_grayscale)
                     else -> stringResource(R.string.settings_background_artist)
                 }
-                Text(
+                MenuRow(
                     text = "${stringResource(R.string.menu_background_prefix)}: $backgroundLabel",
-                    color = Color.White,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(if (highlightedIndex == backgroundRowIndex) Color.White.copy(alpha = 0.3f) else Color.Transparent)
-                        .padding(horizontal = 16.dp, vertical = 10.dp)
+                    icon = BackgroundMenuIcon,
+                    highlighted = highlightedIndex == backgroundRowIndex
                 )
 
                 val standbyLabel = if (standbyOnExit)
                     stringResource(R.string.menu_standby_on)
                 else
                     stringResource(R.string.menu_standby_off)
-                Text(
+                MenuRow(
                     text = "${stringResource(R.string.menu_standby_prefix)}: $standbyLabel",
-                    color = Color.White,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(if (highlightedIndex == standbyRowIndex) Color.White.copy(alpha = 0.3f) else Color.Transparent)
-                        .padding(horizontal = 16.dp, vertical = 10.dp)
+                    icon = StandbyMenuIcon,
+                    highlighted = highlightedIndex == standbyRowIndex
                 )
 
-                Text(
+                MenuRow(
                     text = stringResource(R.string.menu_settings),
-                    color = Color.White,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(if (highlightedIndex == settingsRowIndex) Color.White.copy(alpha = 0.3f) else Color.Transparent)
-                        .padding(horizontal = 16.dp, vertical = 10.dp)
+                    icon = SettingsMenuIcon,
+                    highlighted = highlightedIndex == settingsRowIndex
                 )
             }
         }
+    }
+}
+
+// A row in the ⋮ menu: icon, then text; highlighted while the D-pad is on it.
+@Composable
+private fun MenuRow(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector, highlighted: Boolean) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(if (highlighted) Color.White.copy(alpha = 0.3f) else Color.Transparent)
+            .padding(horizontal = 16.dp, vertical = 10.dp)
+    ) {
+        Icon(imageVector = icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+        Text(text = text, color = Color.White, modifier = Modifier.padding(start = 10.dp))
     }
 }

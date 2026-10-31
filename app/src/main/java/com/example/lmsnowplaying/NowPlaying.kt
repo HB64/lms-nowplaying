@@ -328,6 +328,7 @@ fun PlayerScreen(){
         if (albumArtUrl.isBlank()) accentColor = Color.White
     }
     val animatedAccent by androidx.compose.animation.animateColorAsState(accentColor, label = "accent")
+    LaunchedEffect(animatedAccent) { NavState.accentColor = animatedAccent }
 
     // After a while without any remote input, D-pad focus returns to the
     // play/pause button (unless the options menu is open).
@@ -336,11 +337,24 @@ fun PlayerScreen(){
     // Later (after 30s) the focus ring itself is hidden too, until the next key press.
     var refocused by remember { mutableStateOf(false) }
     var playHasFocus by remember { mutableStateOf(false) }
+    // At start the layout can still swap (new artwork, player data) and take the
+    // focus away from the play button: keep asking for a few seconds, until the
+    // user presses a key.
+    LaunchedEffect(Unit) {
+        if (!NavState.focusPlayButtonOnStart) return@LaunchedEffect
+        val start = System.currentTimeMillis()
+        while (System.currentTimeMillis() - start < 4000 && lastKeyTime <= start) {
+            if (!playHasFocus && !NavState.menuOpen && !NavState.showBrowse && !NavState.showQueue) {
+                try { playFocusRequester.requestFocus() } catch (_: Exception) { }
+            }
+            delay(150)
+        }
+    }
     LaunchedEffect(Unit) {
         while (true) {
             delay(1000)
             if (NavState.menuOpen) continue
-            val idle = System.currentTimeMillis() - lastKeyTime
+            val idle = System.currentTimeMillis() - maxOf(lastKeyTime, NavState.lastTyped)
             // The browse (☰) panel closes by itself after the same idle time,
             // and focus goes back to the play button.
             if (NavState.showBrowse || NavState.showQueue) {

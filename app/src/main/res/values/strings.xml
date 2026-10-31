@@ -104,4 +104,14 @@
     <string name="shuffle_songs">Shuffle songs</string>
     <string name="shuffle_releases">Shuffle releases</string>
     <string name="shuffle_off">Shuffle off</string>
+    <string name="browse_playlists">Playlists</string>
+    <string name="browse_radio">Radio</string>
+    <string name="browse_my_music">My Music</string>
+    <string name="browse_no_radios">No radio stations found</string>
+    <string name="browse_playlist">Playlist</string>
+    <string name="browse_no_playlists">No playlists found</string>
+    <string name="playlist_playing">Playlist is playing</string>
+    <string name="playlist_next">Playlist plays next</string>
+    <string name="playlist_added">Playlist added to queue</string>
+    <string name="playlist_show_tracks">Show tracks</string>
 </resources>

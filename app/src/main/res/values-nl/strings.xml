@@ -104,4 +104,14 @@
     <string name="shuffle_songs">Nummers willekeurig afspelen</string>
     <string name="shuffle_releases">Shuffle releases</string>
     <string name="shuffle_off">Niet willekeurig</string>
+    <string name="browse_playlists">Afspeellijsten</string>
+    <string name="browse_radio">Radio</string>
+    <string name="browse_my_music">Mijn Muziek</string>
+    <string name="browse_no_radios">Geen radiozenders gevonden</string>
+    <string name="browse_playlist">Afspeellijst</string>
+    <string name="browse_no_playlists">Geen afspeellijsten gevonden</string>
+    <string name="playlist_playing">Afspeellijst wordt afgespeeld</string>
+    <string name="playlist_next">Afspeellijst komt hierna</string>
+    <string name="playlist_added">Afspeellijst toegevoegd aan wachtrij</string>
+    <string name="playlist_show_tracks">Tracks tonen</string>
 </resources>

@@ -3,6 +3,8 @@ package com.example.lmsnowplaying.settings
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 
 /**
  * Tiny app-wide navigation flag so the player dropdown (deep in the
@@ -35,8 +37,25 @@ object NavState {
     // on Now Playing) is showing.
     var showBrowse by mutableStateOf(false)
 
+    // When something was last typed on the on-screen keyboard (ms); it does not
+    // arrive as a remote key press, but it must keep the panels open.
+    var lastTyped = 0L
+
+    // The part of the browse panel that was open last, so it opens there again
+    // (kept while the app runs).
+    var lastBrowse = ""
+
     // True while the Queue panel (button at the bottom right) is showing.
     var showQueue by mutableStateOf(false)
+
+    // The color of the progress bar (taken from the album cover), so other
+    // panels can use the same color.
+    var accentColor by mutableStateOf(Color.White)
+
+    // Name of the mix plugin that is on right now, shown next to the "Mix"
+    // title of the browse panel (empty when none is on).
+    var activeMixLabel by mutableStateOf("")
+    var activeMixIcon by mutableStateOf<ImageVector?>(null)
 
     // True after a long stretch without remote input: the focus ring is
     // hidden (focus itself stays put) until the next key press.

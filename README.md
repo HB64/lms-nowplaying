@@ -12,7 +12,10 @@ If you have a Jellyfin instance, you can provide the credentials to grab the bac
 - Runtime settings screen — configure your Lyrion (and optional Jellyfin) server directly in the app, no rebuild needed.
 - Remembers a default player (checkbox in the player menu) and auto-connects to it on startup, so a Harmony-launched activity is ready to go without picking a player by hand.
 - Material-style Now Playing screen with a progress bar and position dot, play/pause, previous/next, shuffle (songs / releases) and repeat (queue / one song / Don't Stop The Music).
-- Library browser (☰): artists (with A–Z jump), albums, tracks, genres, music folder, search and Lyrion favorites, all with cover art. Play now, play next or add to the queue.
+- Library browser (☰): a "My Music" section (search, artists with A–Z jump, albums, tracks, genres, music folder, favorites, playlists) with cover art, and it remembers the section you were in. Play now, play next or add to the queue.
+- Library search shows artist and album with every result, plus the matching track under an album; long lines scroll by themselves.
+- Radio menu: browse and search your Lyrion radio plugins (TuneIn, RadioTunes, ...) and play stations. Radio Now Playing appears at the top when it is installed.
+- Icons throughout the menus, player list and settings, with a player-type icon (Squeezelite, Boom, Touch, ...) in the header, and a scroll indicator on long lists.
 - Queue panel: see what is queued, jump to a track or remove it.
 - Mix menu: switch the Auto Mix plugins SugarCube, MIPster, Random Flow and Lyrion's Random Mix on or off, and start a new mix or a batch. While a stream plays, a start-mix button on the Now Playing screen starts a mix right away.
 - Shows a preview of the next track under the currently playing one.
@@ -23,7 +26,7 @@ If you have a Jellyfin instance, you can provide the credentials to grab the bac
 
 # Installing without building
 
-Prebuilt APKs are published on the [Releases page](https://github.com/HB64/lms-nowplaying-fork/releases) — download the `.apk` from the latest release and install it via `adb install` or a file manager/sideload app on your Android TV device. After install, fill in your Lyrion (and optional Jellyfin) server details on the in-app settings screen — no `local.properties` or rebuild required.
+Prebuilt APKs are published on the [Releases page](https://github.com/HB64/lms-nowplaying/releases) — download the `.apk` from the latest release and install it via `adb install` or a file manager/sideload app on your Android TV device. After install, fill in your Lyrion (and optional Jellyfin) server details on the in-app settings screen — no `local.properties` or rebuild required.
 
 # Building the Source
 *Project currently builds with Kotlin 2.2.21, AGP 8.1.2, and Jellyfin SDK 1.8.11 (see `gradle/libs.versions.toml`).*
@@ -53,3 +56,7 @@ Server URLs and credentials can be set two ways, and runtime settings always tak
 
 - **In-app settings screen** (recommended) — configure or change your Lyrion/Jellyfin servers directly on the device, no rebuild needed. Stored via DataStore.
 - **Compile-time defaults** via `local.properties`/`BuildConfig` (see "Building the Source" above) — useful as a fallback default, or if you prefer not to type credentials on a TV remote.
+
+# Credits
+
+- Icons: [Material Design Icons](https://pictogrammers.com/library/mdi/) by Pictogrammers, licensed under the [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0).
