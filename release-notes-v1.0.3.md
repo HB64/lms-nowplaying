@@ -19,6 +19,7 @@
 ### Fixes
 - Turning genres on or off for Random Mix now works from the list.
 - Random Mix: the checkmark now switches continuous mode on and off, and a mix is started with the "Start new mix" row.
+- Texts that come from Lyrion's plugin menus (settings and their choices, such as the Don't Stop The Music providers) now follow the language of the device instead of the language of the server.
 
 ### Credits
 - Icons: [Material Design Icons](https://pictogrammers.com/library/mdi/) by Pictogrammers (Apache License 2.0).

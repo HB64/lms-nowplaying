@@ -22,6 +22,7 @@ object RetrofitClient {
 
             val client = OkHttpClient.Builder()
                 .addInterceptor(BasicAuthInterceptor(settings.lmsUsername, settings.lmsPassword))
+                .addInterceptor(AcceptLanguageInterceptor())
                 .build()
 
             val built = Retrofit.Builder()
@@ -41,6 +42,17 @@ object ApiClient {
         get() = RetrofitClient.retrofit.create(ApiService::class.java)
 }
 
+
+// Lyrion returns texts of its plugin menus (settings, choices) in the language
+// of the request's Accept-Language header instead of its own server language,
+// so they match the language the app itself is shown in.
+class AcceptLanguageInterceptor : Interceptor {
+    override fun intercept(chain: Interceptor.Chain): okhttp3.Response {
+        val language = java.util.Locale.getDefault().language.ifBlank { "en" }
+        val request = chain.request().newBuilder().header("Accept-Language", language).build()
+        return chain.proceed(request)
+    }
+}
 
 class BasicAuthInterceptor(username: String, password: String): Interceptor {
     private var credentials: String = Credentials.basic(username, password)
