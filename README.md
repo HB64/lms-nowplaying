@@ -59,4 +59,5 @@ Server URLs and credentials can be set two ways, and runtime settings always tak
 
 # Credits
 
+- Based on [LMS-NowPlaying](https://github.com/TroyFernandes/LMS-NowPlaying) by Troy Fernandes, written when the server was still called Logitech Media Server.
 - Icons: [Material Design Icons](https://pictogrammers.com/library/mdi/) by Pictogrammers, licensed under the [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0).
