@@ -32,14 +32,9 @@ Prebuilt APKs are published on the [Releases page](https://github.com/HB64/lms-n
 *Project currently builds with Kotlin 2.2.21, AGP 8.1.2, and Jellyfin SDK 1.8.11 (see `gradle/libs.versions.toml`).*
 
 1. Clone the repo and open it in Android Studio.
-2. Copy the contents of `sample.local.properties` into a `local.properties` file in the project root (Android Studio creates this file automatically the first time you open the project — just append the settings below to it). This step is optional: it only pre-fills default server credentials at build time. You can leave everything blank (still quoted as `""""`) and configure the server(s) from the in-app settings screen after install instead.
-3. Fill in your own values (or leave blank/`""""` to configure at runtime instead):
-   - `LMS_URL` / `LMS_USERNAME` / `LMS_PASSWORD` — point this at your Lyrion Music Server (formerly Logitech Media Server / LMS). If your server has no auth configured, still set both to `""""` (four double quotes — empty credentials must be quoted like this or the build fails).
-   - `JELLYFIN_URL` / `JELLYFIN_API_KEY` / `JELLYFIN_USERNAME` / `JELLYFIN_PASSWORD` — optional. Used as a fallback to fetch an artist backdrop image when Lyrion has no portrait for the artist. Leave `JELLYFIN_API_KEY` empty (`""""`) to disable Jellyfin entirely — the app then just shows a blurred album cover as the background.
-4. Restart Android Studio (or "Sync Project with Gradle Files") so the new `local.properties` values are picked up by the secrets-gradle-plugin.
-5. Change the build variant to `release` (or use `debug` while developing).
-6. In Android Studio: Build → Generate App Bundles or APKs → Generate APKs.
-7. Install the APK on your Android TV device (e.g. Nvidia Shield) via `adb install` or by running it directly from Android Studio with the device selected.
+2. Change the build variant to `release` (or use `debug` while developing).
+3. In Android Studio: Build → Generate App Bundles or APKs → Generate APKs.
+4. Install the APK on your Android TV device (e.g. Nvidia Shield) via `adb install` or by running it directly from Android Studio with the device selected.
 
 ## Jellyfin compatibility — important
 
@@ -52,10 +47,7 @@ If you bump the SDK version and hit build or runtime errors, these are the two w
 
 ## Configuration
 
-Server URLs and credentials can be set two ways, and runtime settings always take priority:
-
-- **In-app settings screen** (recommended) — configure or change your Lyrion/Jellyfin servers directly on the device, no rebuild needed. Stored via DataStore.
-- **Compile-time defaults** via `local.properties`/`BuildConfig` (see "Building the Source" above) — useful as a fallback default, or if you prefer not to type credentials on a TV remote.
+Server URLs and credentials are set on the in-app settings screen (Lyrion, and optionally Jellyfin) and stored on the device only (DataStore). Nothing is compiled into the APK, so no `local.properties` or rebuild is needed.
 
 # Credits
 

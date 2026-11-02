@@ -9,6 +9,13 @@ plugins {
     id("com.google.android.libraries.mapsplatform.secrets-gradle-plugin")
 }
 
+// Build-time defaults come from the sample file only, never from the
+// developer's local.properties, so a built APK cannot contain private details.
+secrets {
+    propertiesFileName = "sample.local.properties"
+    defaultPropertiesFileName = "sample.local.properties"
+}
+
 android {
     namespace = bundleID
     compileSdk = 34

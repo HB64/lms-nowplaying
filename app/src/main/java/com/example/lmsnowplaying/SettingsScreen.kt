@@ -1,6 +1,12 @@
 package com.example.lmsnowplaying
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -79,12 +85,13 @@ fun SettingsScreen(
     var backgroundStyle by remember { mutableStateOf(initial.backgroundStyle) }
     var standbyOnExit by remember { mutableStateOf(initial.standbyOnExit) }
 
+    val scroll = rememberScrollState()
     MaterialTheme(colorScheme = darkColorScheme()) {
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black)
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(scroll)
             .padding(horizontal = 80.dp, vertical = 40.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -147,9 +154,9 @@ fun SettingsScreen(
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 rowOptions.forEach { (value, label) ->
                     if (backgroundStyle == value) {
-                        Button(onClick = { }) { Text(label) }
+                        FocusButton(onClick = { }) { Text(label) }
                     } else {
-                        OutlinedButton(onClick = { backgroundStyle = value }) { Text(label) }
+                        FocusButton(onClick = { backgroundStyle = value }, filled = false) { Text(label) }
                     }
                 }
             }
@@ -183,7 +190,7 @@ fun SettingsScreen(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier.padding(top = 16.dp)
         ) {
-            Button(
+            FocusButton(
                 onClick = {
                     val toSave = SettingsRepository.Settings(
                         lmsUrl = normalizeUrl(lmsUrl),
@@ -216,13 +223,41 @@ fun SettingsScreen(
             }
 
             if (onCancel != null) {
-                OutlinedButton(onClick = onCancel) {
+                FocusButton(onClick = onCancel, filled = false) {
                     Text(stringResource(R.string.settings_cancel))
                 }
             }
         }
     }
+    // Fade with an arrow while more settings follow below
+    if (scroll.canScrollForward) {
+        Box(
+            contentAlignment = Alignment.BottomCenter,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(48.dp)
+                .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))))
+        ) {
+            Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null, tint = Color.White.copy(alpha = 0.85f), modifier = Modifier.size(28.dp))
+        }
     }
+    }
+    }
+}
+
+// Button with a clear white ring while it has focus (D-pad).
+@Composable
+private fun FocusButton(
+    onClick: () -> Unit,
+    filled: Boolean = true,
+    content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit,
+) {
+    val source = remember { MutableInteractionSource() }
+    val focused by source.collectIsFocusedAsState()
+    val ring = if (focused) Modifier.border(3.dp, Color.White, RoundedCornerShape(50)) else Modifier
+    if (filled) Button(onClick = onClick, interactionSource = source, modifier = ring, content = content)
+    else OutlinedButton(onClick = onClick, interactionSource = source, modifier = ring, content = content)
 }
 
 // Section heading with an icon in front of it.

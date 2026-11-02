@@ -10,6 +10,7 @@
 - **Icons**: the browser, the Mix menu, the "⋮" menu and the settings screen now have icons from Material Design Icons. Players get an icon by their type (Squeezelite-X, Boom, Touch, SqueezePlay), also in front of the player name in the header.
 - **Scroll hint**: lists in the browser and the queue show a fade with an arrow at the bottom while more items follow.
 - **Older SugarCube versions** (without batches) can start a mix; the batch rows are hidden for them.
+- **Search results** show the artist and album with every track (and the track number), the matching track under an album, and long lines scroll by themselves. Album track lists show the artist per track.
 
 ### Changed
 - Checkmarks and radio markers are right-aligned, and the stand-by switch in Settings shows clearly where the focus is.
@@ -20,6 +21,8 @@
 - Turning genres on or off for Random Mix now works from the list.
 - Random Mix: the checkmark now switches continuous mode on and off, and a mix is started with the "Start new mix" row.
 - Texts that come from Lyrion's plugin menus (settings and their choices, such as the Don't Stop The Music providers) now follow the language of the device instead of the language of the server.
+
+- Server details are no longer built into the app. Settings are only the ones you enter on the settings screen, so a field you clear stays empty. Settings from the previous version stay as long as you update over it; after uninstalling you enter them again.
 
 ### Credits
 - Icons: [Material Design Icons](https://pictogrammers.com/library/mdi/) by Pictogrammers (Apache License 2.0).
