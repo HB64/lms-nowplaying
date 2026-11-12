@@ -145,6 +145,9 @@ object LMS{
     private val lmsApi = ApiClient.apiService
 
     var isPlaying: Boolean = false
+    @Volatile var volume: Int = 0
+    @Volatile var volumeMuted: Boolean = false
+    @Volatile var volumeControl: Boolean = false
         private set
 
     var elapsedTime: Double = 0.0
@@ -170,6 +173,13 @@ object LMS{
     var playerModels: Map<String, Pair<String, String>> = emptyMap()
         private set
 
+    // mac -> IP address (without port) the server sees the player on
+    var playerIps: Map<String, String> = emptyMap()
+        private set
+
+    // Bumped whenever the visible player list changes, so the menu can redraw.
+    val playersVersion = kotlinx.coroutines.flow.MutableStateFlow(0)
+
     // A player that just went to standby, or whose app just closed, is
     // often briefly unreachable (connection refused/timeout/EOF while it
     // wakes back up). None of our network calls should be able to crash
@@ -189,7 +199,7 @@ object LMS{
 
     suspend fun getPlayers() {
         safeCall("getPlayers", Unit) {
-            val reqString = "{\"method\": \"slim.request\", \"params\": [\"\", [\"players\", \"0\", \"8\"]]}"
+            val reqString = "{\"method\": \"slim.request\", \"params\": [\"\", [\"players\", \"0\", \"50\"]]}"
             val requestBody = reqString.toRequestBody("application/json".toMediaTypeOrNull())
             val res = lmsApi.getPlayer(requestBody)
 
@@ -203,22 +213,65 @@ object LMS{
             // or half-filled list while this runs on the IO thread.
             val fresh: MutableList<Pair<String, String>> = arrayListOf()
             val freshModels = HashMap<String, Pair<String, String>>()
+            val freshIps = HashMap<String, String>()
             for (i in 0 until loop.length()) {
                 val item = loop.getJSONObject(i)
                 val name = item.getString("name")
                 val player_mac = item.getString("playerid")
-                fresh.add(Pair(name, player_mac))
                 freshModels[player_mac] = Pair(item.optString("model", ""), item.optString("modelname", ""))
+                freshIps[player_mac] = item.optString("ip", "").substringBeforeLast(':')
+                // The server also lists players that are offline (e.g. a player
+                // app that is not running). Hide those.
+                if (item.optInt("connected", 1) == 1) fresh.add(Pair(name, player_mac))
             }
+            val changed = fresh != players
             players = fresh
             playerModels = freshModels
+            playerIps = freshIps
+            if (changed) playersVersion.value = playersVersion.value + 1
+
+            // The selected player went offline (e.g. a player app was stopped): it is
+            // hidden from the list, so deselect it too. Only once it has been seen
+            // online, so a player that is still connecting is not dropped.
+            val onlyCfg = com.example.lmsnowplaying.settings.AppConfig.current
+            if (onlyCfg.onlyControlDefault && onlyCfg.defaultPlayerMac.isNotBlank() && playerMac != onlyCfg.defaultPlayerMac) {
+                // "Only control default": always the default player; none while it is offline.
+                if (fresh.any { it.second == onlyCfg.defaultPlayerMac }) setPlayer(onlyCfg.defaultPlayerName, onlyCfg.defaultPlayerMac)
+                else if (playerMac != "00:00:00:00:00:00") clearPlayer()
+            } else if (playerMac != "00:00:00:00:00:00") {
+                if (fresh.any { it.second == playerMac }) selectedSeenOnline = true
+                else if (selectedSeenOnline || System.currentTimeMillis() - selectedAt > 60_000) clearPlayer()
+            } else {
+                // Nothing selected: back to the default player as soon as it is connected.
+                val cfg = com.example.lmsnowplaying.settings.AppConfig.current
+                if (cfg.defaultPlayerMac.isNotBlank() && fresh.any { it.second == cfg.defaultPlayerMac }) {
+                    setPlayer(cfg.defaultPlayerName, cfg.defaultPlayerMac)
+                }
+            }
 
             println(players)
         }
     }
 
+    // True once the selected player has been seen in the list of connected players.
+    @Volatile
+    private var selectedSeenOnline = false
+
+    // When the current player was selected (ms): after a minute offline it is dropped even if never seen online.
+    @Volatile
+    private var selectedAt = 0L
+
+    private fun clearPlayer() {
+        playerMac = "00:00:00:00:00:00"
+        playerName = "No Player"
+        playerNameFlow.value = "No Player"
+        selectedSeenOnline = false
+    }
+
     fun setPlayer(name: String, mac: String){
         val previousMac = playerMac
+        selectedSeenOnline = false
+        selectedAt = System.currentTimeMillis()
         playerName = name
         playerNameFlow.value = name
         playerMac = mac
@@ -317,6 +370,30 @@ object LMS{
         }
     }
 
+    // Changes the volume of the current player by delta percent (negative =
+    // down). Plugins like Denon/Marantz AVR Control pick up this command too.
+    suspend fun changeVolume(delta: Int) {
+        if (playerMac == "00:00:00:00:00:00") return
+        safeCall("changeVolume", Unit) {
+            rpcPlayer(playerMac, listOf("mixer", "volume", if (delta >= 0) "+$delta" else "$delta"))
+        }
+    }
+
+    // Jumps to an absolute position (seconds) in the current track.
+    suspend fun seekTo(seconds: Int) {
+        if (playerMac == "00:00:00:00:00:00") return
+        safeCall("seekTo", Unit) {
+            rpcPlayer(playerMac, listOf("time", seconds))
+        }
+    }
+
+    suspend fun toggleMute() {
+        if (playerMac == "00:00:00:00:00:00") return
+        safeCall("toggleMute", Unit) {
+            rpcPlayer(playerMac, listOf("mixer", "muting", "toggle"))
+        }
+    }
+
     suspend fun status() {
         safeCall("status", Unit) {
             val reqString = "{\"method\": \"slim.request\", \"params\": [\"$playerMac\", [\"status\", \"-\",1]]}"
@@ -329,6 +406,11 @@ object LMS{
             isPlaying = mode == "play"
             elapsedTime = getObject.optDouble("time", 0.0).let { if (it.isNaN()) 0.0 else it }
             trackDuration = getObject.optDouble("duration", 0.0).let { if (it.isNaN()) 0.0 else it }
+            // Lyrion reports a muted player with a negative volume
+            val vol = getObject.optInt("mixer volume", 100)
+            volume = Math.abs(vol)
+            volumeMuted = vol < 0
+            volumeControl = getObject.optInt("use_volume_control", 1) == 1
         }
     }
 
@@ -1110,6 +1192,20 @@ object LMS{
     // switched it off since.
     @Volatile
     private var randomMixMac: String? = null
+
+    // Lyrion's "volume control" of a player: true = variable, false = fixed at 100%.
+    suspend fun getDigitalVolumeControl(mac: String): Boolean? =
+        safeCall<Boolean?>("getDigitalVolumeControl", null) {
+            val v = playerPref(mac, "digitalVolumeControl")
+            if (v.isEmpty()) null else v != "0"
+        }
+
+    suspend fun setDigitalVolumeControl(mac: String, variable: Boolean) {
+        safeCall("setDigitalVolumeControl", Unit) {
+            rpcPlayer(mac, listOf("playerpref", "digitalVolumeControl", if (variable) "1" else "0"))
+            Unit
+        }
+    }
 
     private suspend fun playerPref(mac: String, name: String): String =
         rpcPlayer(mac, listOf("playerpref", name, "?")).optString("_p2", "")

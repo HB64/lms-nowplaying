@@ -163,6 +163,9 @@ fun BrowseScreen() {
 
     // The track the action menu (play now / next / add) is open for.
     var actionTrack by remember { mutableStateOf<BrowseTrack?>(null) }
+    // Track list of an album: the track last chosen (focus returns to it) and the scroll position.
+    var selectedTrackId by remember { mutableStateOf("") }
+    val trackListState = rememberLazyListState()
 
     // Genres, and the artists within the chosen genre.
     var genres by remember { mutableStateOf<List<BrowseItem>?>(null) }
@@ -233,10 +236,12 @@ fun BrowseScreen() {
     }
     val chooseAlbum: (BrowseItem) -> Unit = { album ->
         chosenAlbum = album
+        selectedTrackId = ""
         go(BrowseLevel.TRACKS)
     }
     val chooseTrack: (BrowseTrack) -> Unit = { track ->
         actionTrack = track
+        selectedTrackId = track.id
         go(BrowseLevel.TRACK_ACTIONS)
     }
 
@@ -486,6 +491,8 @@ fun BrowseScreen() {
                 )
                 BrowseLevel.TRACKS -> TrackList(
                     albumId = chosenAlbum?.id ?: "",
+                    listState = trackListState,
+                    selectedTrackId = selectedTrackId,
                     onTrack = chooseTrack,
                 )
                 BrowseLevel.TRACK_ACTIONS -> actionTrack?.let { TrackActions(it, onDone = goBack) }
@@ -1861,7 +1868,7 @@ private fun AlbumList(
 }
 
 @Composable
-private fun TrackList(albumId: String, onTrack: (BrowseTrack) -> Unit) {
+private fun TrackList(albumId: String, listState: LazyListState, selectedTrackId: String, onTrack: (BrowseTrack) -> Unit) {
     var tracks by remember(albumId) { mutableStateOf<List<BrowseTrack>?>(null) }
     LaunchedEffect(albumId) {
         if (albumId.isNotBlank()) {
@@ -1889,10 +1896,22 @@ private fun TrackList(albumId: String, onTrack: (BrowseTrack) -> Unit) {
         return
     }
 
+    // Focus on the track we came back from; the first row on first open.
     val firstFocus = remember { FocusRequester() }
-    LaunchedEffect(list) { firstFocus.requestFocus() }
+    val selectedFocus = remember { FocusRequester() }
+    val selectedIndex = list.indexOfFirst { it.id == selectedTrackId }
+    LaunchedEffect(list) {
+        if (selectedIndex >= 0) {
+            // +2: the two album rows come before the tracks
+            listState.scrollToItem(selectedIndex + 2)
+            try { selectedFocus.requestFocus() } catch (_: Exception) { }
+        } else {
+            listState.scrollToItem(0)
+            try { firstFocus.requestFocus() } catch (_: Exception) { }
+        }
+    }
 
-    HintLazyColumn {
+    HintLazyColumn(state = listState) {
         // Two rows for the whole album first, then the tracks.
         item {
             BrowseRow(
@@ -1913,6 +1932,7 @@ private fun TrackList(albumId: String, onTrack: (BrowseTrack) -> Unit) {
                 text = if (track.trackNum > 0) "${track.trackNum}. ${track.title}" else track.title,
                 subtitle = track.subtitle,
                 onClick = { onTrack(track) },
+                modifier = if (index == selectedIndex) Modifier.focusRequester(selectedFocus) else Modifier,
             )
         }
     }

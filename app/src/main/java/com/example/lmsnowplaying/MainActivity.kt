@@ -2,6 +2,7 @@ package com.example.lmsnowplaying
 
 import android.annotation.SuppressLint
 import android.os.Bundle
+import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.BackHandler
@@ -33,10 +34,35 @@ import kotlin.system.exitProcess
 
 class MainActivity : ComponentActivity() {
 
+    // Volume keys control the selected player (step from settings, mute on
+    // the mute key). Without a selected player they keep their normal job.
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        // Not before a server address is set: touching LMS then crashes.
+        if (AppConfig.current.lmsUrl.isNotBlank() && LMS.playerMac != "00:00:00:00:00:00" && NavState.volumeAdjustable) {
+            val step = AppConfig.current.volumeStep
+            when (keyCode) {
+                KeyEvent.KEYCODE_VOLUME_UP -> {
+                    DeviceVolume.adjust(step)
+                    return true
+                }
+                KeyEvent.KEYCODE_VOLUME_DOWN -> {
+                    DeviceVolume.adjust(-step)
+                    return true
+                }
+                KeyEvent.KEYCODE_VOLUME_MUTE -> {
+                    if (event.repeatCount == 0) DeviceVolume.mute()
+                    return true
+                }
+            }
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
     @SuppressLint("CoroutineCreationDuringComposition")
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
+        DeviceVolume.init(applicationContext)
 
 
         onBackPressedDispatcher.addCallback(
@@ -48,14 +74,19 @@ class MainActivity : ComponentActivity() {
                     // reach the player (e.g. a Boom) before the process
                     // dies - a fire-and-forget coroutine could get killed
                     // mid-request by the exitProcess() call right after.
-                    if (AppConfig.current.standbyOnExit) {
+                    if (AppConfig.current.standbyOnExit && AppConfig.current.lmsUrl.isNotBlank()) {
                         runBlocking(Dispatchers.IO) {
                             LMS.playPause(false)
                             LMS.power(false)
                         }
                     }
-                    this@MainActivity.finish()
-                    exitProcess(0)
+                    // The player app on this device stops together with LMSNP
+                    if (AppConfig.current.localPlayerStopOnExit) LocalPlayer.stop(this@MainActivity, AppConfig.current.localPlayerApp)
+                    // Remove the task first and only then end the process: killing the
+                    // process while the activity is still in the task makes Android
+                    // restart the app (it then comes back with "No Player").
+                    this@MainActivity.finishAndRemoveTask()
+                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ exitProcess(0) }, 500)
                 }
             }
         )
@@ -71,6 +102,7 @@ class MainActivity : ComponentActivity() {
 
             LaunchedEffect(Unit) {
                 val resolved = AppConfig.load(context)
+                if (resolved.localPlayerAutoStart) LocalPlayer.start(context, resolved.localPlayerApp)
                 screenState = if (resolved.lmsUrl.isNotBlank()) "ready" else "setup"
             }
 
@@ -112,7 +144,10 @@ class MainActivity : ComponentActivity() {
                             if (LMS.playerMac == "00:00:00:00:00:00") {
                                 val defaultMac = AppConfig.current.defaultPlayerMac
                                 val defaultName = AppConfig.current.defaultPlayerName
-                                if (defaultMac.isNotBlank()) {
+                                // Only when it is connected: an offline default player
+                                // (e.g. a player app that is stopped) stays unselected
+                                // until it connects (LMS.getPlayers then picks it).
+                                if (defaultMac.isNotBlank() && LMS.players.any { it.second == defaultMac }) {
                                     LMS.setPlayer(defaultName, defaultMac)
                                 }
                             }
@@ -134,8 +169,28 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
+                        // Volume slider tip: once, the first time a player with
+                        // adjustable volume is shown (after the plugin tip).
+                        var showVolumeTip by remember { mutableStateOf(false) }
+                        LaunchedEffect(NavState.volumeAdjustable, showPluginTip) {
+                            if (NavState.volumeAdjustable && !showPluginTip && !showVolumeTip &&
+                                !SettingsRepository.hasShownVolumeTip(context)) {
+                                showVolumeTip = true
+                            }
+                        }
+
                         Box(modifier = Modifier.fillMaxSize()) {
                             SecondaryScreen()
+                            if (showVolumeTip) {
+                                PluginTipDialog(
+                                    onDismiss = {
+                                        showVolumeTip = false
+                                        scope.launch { SettingsRepository.markVolumeTipShown(context) }
+                                    },
+                                    titleRes = R.string.volume_tip_title,
+                                    bodyRes = R.string.volume_tip_body,
+                                )
+                            }
                             if (showPluginTip) {
                                 PluginTipDialog(onDismiss = {
                                     showPluginTip = false
@@ -168,9 +223,29 @@ class MainActivity : ComponentActivity() {
         return super.dispatchGenericMotionEvent(ev)
     }
 
+    // The first start is handled when the settings are loaded (onCreate).
+    // Every later return to LMSNP starts the player app again (auto-start on):
+    // it may have been stopped by us, or have quit itself on the standby
+    // command. Starting one that is already running does no harm.
+    private var firstStart = true
+
+    override fun onStart() {
+        super.onStart()
+        if (firstStart) {
+            firstStart = false
+            return
+        }
+        val cfg = AppConfig.current
+        if (cfg.localPlayerAutoStart) LocalPlayer.start(this, cfg.localPlayerApp)
+    }
+
     override fun onStop() {
         super.onStop()
-        if (AppConfig.current.standbyOnExit) {
+        val app = AppConfig.current.localPlayerApp
+        if (app != SettingsRepository.LOCAL_PLAYER_NONE && AppConfig.current.localPlayerStopOnExit) {
+            LocalPlayer.stop(this, app)
+        }
+        if (AppConfig.current.standbyOnExit && AppConfig.current.lmsUrl.isNotBlank()) {
             runBlocking(Dispatchers.IO) {
                 LMS.playPause(false)
                 LMS.power(false)

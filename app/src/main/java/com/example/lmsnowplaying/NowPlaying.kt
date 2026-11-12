@@ -53,6 +53,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.key
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
 import android.widget.Toast
@@ -133,6 +137,39 @@ fun PlayerScreen(){
     var playing by remember { mutableStateOf(LMS.isPlaying) }
     var elapsedTime by remember { mutableStateOf(LMS.elapsedTime) }
     var trackDuration by remember { mutableStateOf(LMS.trackDuration) }
+
+    // Seeking with the progress bar: left/right move a pending target, which
+    // is sent to the server shortly after the last key press. Holding the key
+    // seeks faster.
+    var seekTarget by remember { mutableStateOf<Double?>(null) }
+    var seekKick by remember { mutableStateOf(0) }
+    var lastSeekAt by remember { mutableStateOf(0L) }
+    var lastSeekKeyAt by remember { mutableStateOf(0L) }
+    val seekSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val seekFocused by seekSource.collectIsFocusedAsState()
+    LaunchedEffect(seekKick) {
+        if (seekTarget != null) {
+            delay(500)
+            val t = seekTarget
+            if (t != null) {
+                elapsedTime = t
+                lastSeekAt = System.currentTimeMillis()
+                seekTarget = null
+                CoroutineScope(Dispatchers.IO).launch { LMS.seekTo(t.toInt()) }
+            }
+        }
+    }
+    // Own clock while playing: counts a second at a time between the 2 s polls
+    // (each poll sets it right again), so the progress bar moves smoothly.
+    LaunchedEffect(playing) {
+        while (playing) {
+            delay(1000)
+            if (seekTarget == null && System.currentTimeMillis() - lastSeekAt > 1500) {
+                val next = elapsedTime + 1.0
+                elapsedTime = if (trackDuration > 0) minOf(next, trackDuration) else next
+            }
+        }
+    }
     var currentSong = ""
 
     var nextTitle by remember { mutableStateOf("") }
@@ -177,8 +214,22 @@ fun PlayerScreen(){
                 CoroutineScope(Dispatchers.IO).launch{
                     LMS.status()
                     playing = LMS.isPlaying
-                    elapsedTime = LMS.elapsedTime
+                    // Don't let a poll that is still in flight undo a fresh seek
+                    if (System.currentTimeMillis() - lastSeekAt > 1500) elapsedTime = LMS.elapsedTime
                     trackDuration = LMS.trackDuration
+                    val deviceMode = DeviceVolume.active()
+                    NavState.deviceVolumeMode = deviceMode
+                    NavState.volumeAdjustable = LMS.volumeControl || deviceMode
+                    // Right after a local change the server may still report the old value
+                    if (System.currentTimeMillis() - NavState.volumeShownAt > 2500) {
+                        if (deviceMode) {
+                            NavState.volume = DeviceVolume.percent()
+                            NavState.volumeMuted = DeviceVolume.isMuted()
+                        } else {
+                            NavState.volume = LMS.volume
+                            NavState.volumeMuted = LMS.volumeMuted
+                        }
+                    }
                 }
 
                 CoroutineScope(Dispatchers.IO).launch {
@@ -344,7 +395,7 @@ fun PlayerScreen(){
         if (!NavState.focusPlayButtonOnStart) return@LaunchedEffect
         val start = System.currentTimeMillis()
         while (System.currentTimeMillis() - start < 4000 && lastKeyTime <= start) {
-            if (!playHasFocus && !NavState.menuOpen && !NavState.showBrowse && !NavState.showQueue) {
+            if (!playHasFocus && !NavState.menuOpen && !NavState.tipOpen && !NavState.showBrowse && !NavState.showQueue) {
                 try { playFocusRequester.requestFocus() } catch (_: Exception) { }
             }
             delay(150)
@@ -353,7 +404,7 @@ fun PlayerScreen(){
     LaunchedEffect(Unit) {
         while (true) {
             delay(1000)
-            if (NavState.menuOpen) continue
+            if (NavState.menuOpen || NavState.tipOpen) continue
             val idle = System.currentTimeMillis() - maxOf(lastKeyTime, NavState.lastTyped)
             // The browse (☰) panel closes by itself after the same idle time,
             // and focus goes back to the play button.
@@ -485,7 +536,7 @@ fun PlayerScreen(){
             Spacer(modifier = Modifier.size(24.dp))
 
             val progress = if (trackDuration > 0.0) {
-                (elapsedTime / trackDuration).toFloat().coerceIn(0f, 1f)
+                ((seekTarget ?: elapsedTime) / trackDuration).toFloat().coerceIn(0f, 1f)
             } else 0f
 
             Row(
@@ -494,7 +545,7 @@ fun PlayerScreen(){
                     .fillMaxWidth()
                     .padding(horizontal = 80.dp)
             ) {
-                Text(formatDuration(elapsedTime), color = Color.White, fontSize = 14.sp)
+                Text(formatDuration(seekTarget ?: elapsedTime), color = Color.White, fontSize = 14.sp)
                 Spacer(modifier = Modifier.size(12.dp))
                 // Progress bar with a position dot. The track is a neutral
                 // translucent white (not a tint of the accent), so the bar
@@ -504,9 +555,30 @@ fun PlayerScreen(){
                     modifier = Modifier
                         .weight(1f)
                         .height(16.dp)
+                        .onKeyEvent { event ->
+                            if (event.type != androidx.compose.ui.input.key.KeyEventType.KeyDown || trackDuration <= 0.0) return@onKeyEvent false
+                            val dir = when (event.key) {
+                                androidx.compose.ui.input.key.Key.DirectionLeft -> -1
+                                androidx.compose.ui.input.key.Key.DirectionRight -> 1
+                                else -> return@onKeyEvent false
+                            }
+                            val rc = event.nativeKeyEvent.repeatCount
+                            val now = System.currentTimeMillis()
+                            // Held key: act at most ~7 times a second, and
+                            // grow the step the longer the key is held.
+                            if (rc > 0 && now - lastSeekKeyAt < 150) return@onKeyEvent true
+                            lastSeekKeyAt = now
+                            val mult = (1 + rc / 40).coerceAtMost(6)
+                            val base = seekTarget ?: elapsedTime
+                            seekTarget = (base + dir * AppConfig.current.seekStep * mult)
+                                .coerceIn(0.0, (trackDuration - 1).coerceAtLeast(0.0))
+                            seekKick++
+                            true
+                        }
+                        .focusable(enabled = trackDuration > 0.0, interactionSource = seekSource)
                 ) {
-                    val barHeight = 4.dp.toPx()
-                    val dotRadius = 3.5.dp.toPx()
+                    val barHeight = (if (seekFocused) 8.dp else 4.dp).toPx()
+                    val dotRadius = (if (seekFocused) 7.5.dp else 3.5.dp).toPx()
                     val centerY = size.height / 2f
                     val radius = androidx.compose.ui.geometry.CornerRadius(barHeight / 2f)
                     drawRoundRect(
@@ -741,7 +813,23 @@ fun PlayerScreen(){
                 Spacer(modifier = Modifier.size(48.dp))
             }
 
-            Spacer(modifier = Modifier.size(64.dp))
+            // Volume slider in the bottom space (same total height either way);
+            // only for players that accept volume changes.
+            // SB Player has no fixed-volume mode, so its slider can be hidden in Settings.
+            val sliderHidden = AppConfig.current.localPlayerApp == SettingsRepository.LOCAL_PLAYER_SBPLAYER &&
+                !AppConfig.current.showVolumeSlider
+            if (NavState.volumeAdjustable && !sliderHidden) {
+                Spacer(modifier = Modifier.size(12.dp))
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.fillMaxWidth().height(40.dp)
+                ) {
+                    com.example.lmsnowplaying.composable.VolumeSlider()
+                }
+                Spacer(modifier = Modifier.size(12.dp))
+            } else {
+                Spacer(modifier = Modifier.size(64.dp))
+            }
 
         }
 

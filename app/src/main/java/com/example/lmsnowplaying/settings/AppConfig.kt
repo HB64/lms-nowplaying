@@ -14,6 +14,11 @@ object AppConfig {
     var current: SettingsRepository.Settings = SettingsRepository.Settings()
         private set
 
+    // Makes new settings effective at once (the save to disk follows separately).
+    fun update(settings: SettingsRepository.Settings) {
+        current = settings
+    }
+
     suspend fun load(context: Context): SettingsRepository.Settings {
         current = SettingsRepository.get(context)
         return current

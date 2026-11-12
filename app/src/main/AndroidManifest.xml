@@ -10,6 +10,11 @@
         android:name="android.software.leanback"
         android:required="false" />
 
+    <queries>
+        <package android:name="com.angrygoat.android.sbplayer" />
+        <package android:name="org.lyrion.squeezelite" />
+    </queries>
+
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"

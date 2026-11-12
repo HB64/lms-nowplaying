@@ -3,6 +3,7 @@ package com.example.lmsnowplaying.settings
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
@@ -30,6 +31,15 @@ object SettingsRepository {
     private val BACKGROUND_STYLE = stringPreferencesKey("background_style")
     private val STANDBY_ON_EXIT = booleanPreferencesKey("standby_on_exit")
     private val SMART_REPLACE_PROVIDER = stringPreferencesKey("smart_replace_provider")
+    private val VOLUME_STEP = intPreferencesKey("volume_step")
+    private val SEEK_STEP = intPreferencesKey("seek_step")
+    private val LOCAL_PLAYER_APP = stringPreferencesKey("local_player_app")
+    private val LOCAL_PLAYER_STOP_ON_EXIT = booleanPreferencesKey("local_player_stop_on_exit")
+    private val LOCAL_PLAYER_AUTOSTART = booleanPreferencesKey("local_player_autostart")
+    private val SHOW_VOLUME_SLIDER = booleanPreferencesKey("show_volume_slider")
+    private val ONLY_CONTROL_DEFAULT = booleanPreferencesKey("only_control_default")
+    private val LOCAL_PLAYER_DEVICE_VOLUME = booleanPreferencesKey("local_player_device_volume")
+    private val LOCAL_PLAYER_FIXED_VOLUME = intPreferencesKey("local_player_fixed_volume")
 
     // Valid values for Settings.backgroundStyle.
     const val BACKGROUND_STYLE_ARTIST = "artist"
@@ -41,6 +51,11 @@ object SettingsRepository {
     // follows whichever mix plugin is active; the setting is only kept so
     // existing stored preferences stay readable.
     const val SMART_REPLACE_NONE = "none"
+
+    // Valid values for Settings.localPlayerApp.
+    const val LOCAL_PLAYER_NONE = "none"
+    const val LOCAL_PLAYER_SBPLAYER = "sbplayer"
+    const val LOCAL_PLAYER_SQUEEZELITE = "squeezelite"
 
     data class Settings(
         val lmsUrl: String = "",
@@ -71,6 +86,23 @@ object SettingsRepository {
         // the one installed (or neither). Defaults to SugarCube, matching
         // the app's original behavior.
         val smartReplaceProvider: String = SMART_REPLACE_NONE,
+        // Percent per press of the volume keys (1, 2, 5 or 10).
+        val volumeStep: Int = 5,
+        // Seconds per press when seeking with the progress bar (1, 2, 5, 10 or 30).
+        val seekStep: Int = 10,
+        // Software player app on this device (SB Player / Squeezelite) and
+        // whether to start it when LMSNP starts.
+        val localPlayerApp: String = LOCAL_PLAYER_NONE,
+        val localPlayerAutoStart: Boolean = false,
+        // Stop the player app when LMSNP is closed or left.
+        val localPlayerStopOnExit: Boolean = false,
+        // Show the volume slider (only applies when SB Player is the local player).
+        val showVolumeSlider: Boolean = true,
+        val onlyControlDefault: Boolean = false,
+        // Slider and volume keys control this device's volume when the selected player is the local player.
+        val localPlayerDeviceVolume: Boolean = false,
+        // Squeezelite in Lyrion: 1 = fixed at 100%, 0 = variable (default). Sent whenever the player connects.
+        val localPlayerFixedVolume: Int = 0,
     )
 
     fun flow(context: Context): Flow<Settings> =
@@ -88,6 +120,15 @@ object SettingsRepository {
                 backgroundStyle = prefs[BACKGROUND_STYLE] ?: BACKGROUND_STYLE_ARTIST,
                 standbyOnExit = prefs[STANDBY_ON_EXIT] ?: true,
                 smartReplaceProvider = prefs[SMART_REPLACE_PROVIDER] ?: SMART_REPLACE_NONE,
+                volumeStep = prefs[VOLUME_STEP] ?: 5,
+                seekStep = prefs[SEEK_STEP] ?: 10,
+                localPlayerApp = prefs[LOCAL_PLAYER_APP] ?: LOCAL_PLAYER_NONE,
+                localPlayerAutoStart = prefs[LOCAL_PLAYER_AUTOSTART] ?: false,
+                localPlayerStopOnExit = prefs[LOCAL_PLAYER_STOP_ON_EXIT] ?: false,
+                showVolumeSlider = prefs[SHOW_VOLUME_SLIDER] ?: true,
+                onlyControlDefault = prefs[ONLY_CONTROL_DEFAULT] ?: false,
+                localPlayerDeviceVolume = prefs[LOCAL_PLAYER_DEVICE_VOLUME] ?: false,
+                localPlayerFixedVolume = prefs[LOCAL_PLAYER_FIXED_VOLUME] ?: 0,
             )
         }
 
@@ -107,6 +148,15 @@ object SettingsRepository {
             prefs[BACKGROUND_STYLE] = settings.backgroundStyle
             prefs[STANDBY_ON_EXIT] = settings.standbyOnExit
             prefs[SMART_REPLACE_PROVIDER] = settings.smartReplaceProvider
+            prefs[VOLUME_STEP] = settings.volumeStep
+            prefs[SEEK_STEP] = settings.seekStep
+            prefs[LOCAL_PLAYER_APP] = settings.localPlayerApp
+            prefs[LOCAL_PLAYER_AUTOSTART] = settings.localPlayerAutoStart
+            prefs[LOCAL_PLAYER_STOP_ON_EXIT] = settings.localPlayerStopOnExit
+            prefs[SHOW_VOLUME_SLIDER] = settings.showVolumeSlider
+            prefs[ONLY_CONTROL_DEFAULT] = settings.onlyControlDefault
+            prefs[LOCAL_PLAYER_DEVICE_VOLUME] = settings.localPlayerDeviceVolume
+            prefs[LOCAL_PLAYER_FIXED_VOLUME] = settings.localPlayerFixedVolume
         }
     }
 
@@ -128,5 +178,16 @@ object SettingsRepository {
 
     suspend fun markPluginTipShown(context: Context) {
         context.dataStore.edit { prefs -> prefs[PLUGIN_TIP_SHOWN] = true }
+    }
+
+    // One-time tip about the volume slider, shown the first time a player
+    // with adjustable volume is on screen.
+    private val VOLUME_TIP_SHOWN = booleanPreferencesKey("volume_tip_shown")
+
+    suspend fun hasShownVolumeTip(context: Context): Boolean =
+        context.dataStore.data.map { it[VOLUME_TIP_SHOWN] ?: false }.first()
+
+    suspend fun markVolumeTipShown(context: Context) {
+        context.dataStore.edit { prefs -> prefs[VOLUME_TIP_SHOWN] = true }
     }
 }

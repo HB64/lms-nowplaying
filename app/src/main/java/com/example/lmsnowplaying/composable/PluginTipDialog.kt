@@ -1,5 +1,6 @@
 package com.example.lmsnowplaying.composable
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
@@ -12,14 +13,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -31,21 +36,45 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.lmsnowplaying.R
+import com.example.lmsnowplaying.settings.NavState
+import kotlinx.coroutines.delay
 
 // One-time onboarding tip shown on the very first launch, pointing new users
 // at SugarCube/RandomFlow and Don't Stop The Music - the "replace next
 // track" button works best with one of those installed, but is fully usable
 // without them too.
 @Composable
-fun PluginTipDialog(onDismiss: () -> Unit) {
+fun PluginTipDialog(
+    onDismiss: () -> Unit,
+    titleRes: Int = R.string.plugin_tip_title,
+    bodyRes: Int = R.string.plugin_tip_body,
+) {
 
     val okInteractionSource = remember { MutableInteractionSource() }
     val okFocused by okInteractionSource.collectIsFocusedAsState()
     val okFocusRequester = remember { FocusRequester() }
 
+    // Keep asking until the button really has focus: the screen underneath can
+    // grab it back (layout swaps, its own focus handling), which left this
+    // tip open with nothing able to dismiss it.
+    var okHasFocus by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
-        okFocusRequester.requestFocus()
+        while (true) {
+            if (!okHasFocus) {
+                try { okFocusRequester.requestFocus() } catch (_: Exception) { }
+            }
+            delay(150)
+        }
     }
+
+    // While this tip is open the screen underneath leaves the focus alone.
+    DisposableEffect(Unit) {
+        NavState.tipOpen = true
+        onDispose { NavState.tipOpen = false }
+    }
+
+    // Back closes the tip instead of exiting the app.
+    BackHandler(enabled = true) { onDismiss() }
 
     Box(
         contentAlignment = Alignment.Center,
@@ -70,13 +99,13 @@ fun PluginTipDialog(onDismiss: () -> Unit) {
                 .padding(24.dp)
         ) {
             Text(
-                text = stringResource(R.string.plugin_tip_title),
+                text = stringResource(titleRes),
                 color = Color.White,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
             )
             Text(
-                text = stringResource(R.string.plugin_tip_body),
+                text = stringResource(bodyRes),
                 color = Color.White.copy(alpha = 0.85f),
                 fontSize = 15.sp,
                 modifier = Modifier.padding(top = 12.dp),
@@ -87,6 +116,7 @@ fun PluginTipDialog(onDismiss: () -> Unit) {
                 modifier = Modifier
                     .padding(top = 20.dp)
                     .focusRequester(okFocusRequester)
+                    .onFocusChanged { okHasFocus = it.isFocused }
                     .clip(RoundedCornerShape(6.dp))
                     .background(if (okFocused) Color.White.copy(alpha = 0.3f) else Color.Transparent)
             ) {

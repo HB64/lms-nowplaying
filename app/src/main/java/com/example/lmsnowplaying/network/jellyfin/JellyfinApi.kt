@@ -31,7 +31,8 @@ object JellyfinApi {
     fun SetAPIToken(_context: Context){
 
         val settings = AppConfig.current
-        if(settings.jellyfinApiKey.isBlank()) return
+        // Not set up (no key, or no address): leave Jellyfin out.
+        if(settings.jellyfinApiKey.isBlank() || settings.jellyfinUrl.isBlank()) return
 
         val jellyfin = createJellyfin{
             clientInfo = ClientInfo("LMS Jellyfin", "0.0.0")
@@ -55,13 +56,18 @@ object JellyfinApi {
                 )
                 api.update(accessToken = authenticationResult.accessToken)
                 APITOKEN = api.accessToken
-            }catch (err: ApiClientException){
+            }catch (err: kotlinx.coroutines.CancellationException){
+                throw err
+            }catch (err: Exception){
                 println("Something went wrong: ${err.message}")
             }
         }
     }
 
     suspend fun GetArtistUrl(artistName: String): String?{
+
+        // Jellyfin not set up (see SetAPIToken): nothing to look up.
+        if (!::ApiClient.isInitialized) return ""
 
         val searchApi = ApiClient.searchApi
         val artistApi = ApiClient.artistsApi
@@ -87,7 +93,14 @@ object JellyfinApi {
                 }
             }
         }
-        result.await()
+        try {
+            result.await()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            println("Jellyfin artist lookup failed: ${e.message}")
+            return ""
+        }
         return imageUrl
     }
 

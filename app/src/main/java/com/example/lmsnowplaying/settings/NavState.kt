@@ -27,11 +27,17 @@ object NavState {
     // True while the ⋮ options menu is open, so the idle "return focus to
     // the play button" timer never pulls focus out from under it.
     var menuOpen by mutableStateOf(false)
+    // A tip dialog is open: the screen underneath must not pull the focus away from it.
+    var tipOpen by mutableStateOf(false)
 
     // When the ⋮ menu was last closed (ms). The ⋮ button can be recreated
     // right after (the screen switches layout when the artwork changes) and
     // then uses this to take its focus back.
     var menuClosedAt = 0L
+
+    // Set when Settings was opened from the ⋮ menu, so the menu opens again
+    // when Settings is left.
+    var reopenMenu = false
 
     // True while the library browse screen (opened from the top-left button
     // on Now Playing) is showing.
@@ -60,4 +66,26 @@ object NavState {
     // True after a long stretch without remote input: the focus ring is
     // hidden (focus itself stays put) until the next key press.
     var focusRingHidden by mutableStateOf(false)
+
+    // Volume of the current player (0-100), whether it is muted, and whether
+    // the player accepts volume changes at all (use_volume_control).
+    var volume by mutableStateOf(0)
+    var volumeMuted by mutableStateOf(false)
+    var volumeAdjustable by mutableStateOf(false)
+    // True when slider and volume keys control this device's own volume (see DeviceVolume).
+    var deviceVolumeMode by mutableStateOf(false)
+
+    // When the volume was last changed here (ms): the slider shows for a few
+    // seconds after, and the polled value is ignored briefly so it doesn't jump back.
+    var volumeShownAt by mutableStateOf(0L)
+
+    fun bumpVolume(delta: Int) {
+        volume = (volume + delta).coerceIn(0, 100)
+        volumeShownAt = System.currentTimeMillis()
+    }
+
+    fun toggleMuteLocal() {
+        volumeMuted = !volumeMuted
+        volumeShownAt = System.currentTimeMillis()
+    }
 }

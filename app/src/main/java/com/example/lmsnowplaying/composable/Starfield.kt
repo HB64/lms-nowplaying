@@ -1,5 +1,6 @@
 package com.example.lmsnowplaying.composable
 
+import android.graphics.Bitmap
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -15,6 +16,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageShader
+import androidx.compose.ui.graphics.ShaderBrush
+import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.asImageBitmap
 import kotlin.math.sin
 import kotlin.random.Random
 
@@ -50,6 +55,18 @@ fun Starfield(modifier: Modifier = Modifier, starCount: Int = 220) {
         }
     }
 
+    // Fine noise tile laid over the dark gradient: the gradient has only a
+    // few distinct colour steps, which show as wide bands up close. The noise
+    // (white at 0-4/255 opacity) breaks those bands up.
+    val noiseBrush = remember {
+        val tile = 128
+        val random = Random(seed = 7)
+        val pixels = IntArray(tile * tile) { (random.nextInt(0, 5) shl 24) or 0x00FFFFFF }
+        val bitmap = Bitmap.createBitmap(tile, tile, Bitmap.Config.ARGB_8888)
+        bitmap.setPixels(pixels, 0, tile, 0, 0, tile, tile)
+        ShaderBrush(ImageShader(bitmap.asImageBitmap(), TileMode.Repeated, TileMode.Repeated))
+    }
+
     val infiniteTransition = rememberInfiniteTransition(label = "starfield")
     val time by infiniteTransition.animateFloat(
         initialValue = 0f,
@@ -70,6 +87,7 @@ fun Starfield(modifier: Modifier = Modifier, starCount: Int = 220) {
     ) {
         val w = size.width
         val h = size.height
+        drawRect(brush = noiseBrush)
         stars.forEach { star ->
             val twinkle = (sin(time * star.speed + star.phase) + 1f) / 2f
             val alpha = (star.baseAlpha * (0.5f + 0.5f * twinkle)).coerceIn(0f, 1f)
