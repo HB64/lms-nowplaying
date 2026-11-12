@@ -273,6 +273,13 @@ fun PlayerScreen(){
                     albumName = _albumName
                     albumYear = _albumYear
                     artistName = _artistName
+                    // Show all artists of the track; the backdrop lookup below keeps using the first one.
+                    CoroutineScope(Dispatchers.IO).launch {
+                        val all = LMS.getTrackArtists(macAtStart)
+                        if (all.isNotBlank() && all.contains(_artistName) && songName == _songName && LMS.playerMac == macAtStart) {
+                            artistName = all
+                        }
+                    }
                     println("Refreshing")
                     // Real Lyrion coverids are hex hashes (e.g. "795fbdde").
                     // For internet radio / streaming-plugin tracks, Lyrion

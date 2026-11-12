@@ -287,6 +287,21 @@ object LMS{
         }
     }
 
+    // All artists of the playing track as "A, B" (Lyrion's tag "A": the names per
+    // role, separated by ", "). Takes the role with the most names; "" if there is nothing.
+    suspend fun getTrackArtists(playerMAC: String): String {
+        return safeCall("getTrackArtists", "") {
+            val reqString = "{\"method\": \"slim.request\", \"params\": [\"$playerMAC\", [\"status\", \"-\",1,\"tags:A\"]]}"
+            val requestBody = reqString.toRequestBody("application/json".toMediaTypeOrNull())
+            val res = lmsApi.getCurrentSong(requestBody)
+            val obj = JSONObject(res.body()?.string())
+            val first = obj.getJSONObject("result").getJSONArray("playlist_loop").getJSONObject(0)
+            listOf("trackartist", "artist")
+                .map { first.optString(it, "") }
+                .maxByOrNull { v -> v.split(", ").count { it.isNotBlank() } } ?: ""
+        }
+    }
+
     suspend fun getSongInfo(playerMAC: String, songID: Int): JSONArray {
         return safeCall("getSongInfo", JSONArray()) {
             val reqString =
