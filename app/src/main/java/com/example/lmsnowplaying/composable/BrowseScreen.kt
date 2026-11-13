@@ -107,7 +107,8 @@ import kotlinx.coroutines.withContext
 // plus Search), with play / queue actions on albums and tracks.
 private enum class BrowseLevel {
     ROOT, ARTISTS, ALBUMS, TRACKS, TRACK_ACTIONS, SEARCH, GENRES, GENRE_ARTISTS, FOLDER, MIX,
-    FAVORITES, FAVORITE_ACTIONS, PLAYLISTS, PLAYLIST_ACTIONS, PLAYLIST_TRACKS, RADIO, RADIO_ACTIONS, RADIO_SEARCH, MY_MUSIC
+    FAVORITES, FAVORITE_ACTIONS, PLAYLISTS, PLAYLIST_ACTIONS, PLAYLIST_TRACKS, RADIO, RADIO_ACTIONS, RADIO_SEARCH, MY_MUSIC,
+    NEW_MUSIC, ALBUM_ARTISTS, COMPOSERS, YEARS, YEAR_ALBUMS
 }
 
 // The part of the panel a level belongs to, and the way back up to it from the
@@ -115,6 +116,7 @@ private enum class BrowseLevel {
 private fun browseSection(level: BrowseLevel): String = when (level) {
     BrowseLevel.ARTISTS, BrowseLevel.ALBUMS, BrowseLevel.TRACKS, BrowseLevel.TRACK_ACTIONS -> "ARTISTS"
     BrowseLevel.GENRES, BrowseLevel.GENRE_ARTISTS -> "GENRES"
+    BrowseLevel.YEARS, BrowseLevel.YEAR_ALBUMS -> "YEARS"
     BrowseLevel.FAVORITES, BrowseLevel.FAVORITE_ACTIONS -> "FAVORITES"
     BrowseLevel.PLAYLISTS, BrowseLevel.PLAYLIST_ACTIONS, BrowseLevel.PLAYLIST_TRACKS -> "PLAYLISTS"
     BrowseLevel.RADIO, BrowseLevel.RADIO_ACTIONS, BrowseLevel.RADIO_SEARCH -> "RADIO"
@@ -123,7 +125,7 @@ private fun browseSection(level: BrowseLevel): String = when (level) {
 
 private fun restoreBrowse(section: String): Pair<BrowseLevel, List<BrowseLevel>> = when (section) {
     "MY_MUSIC" -> BrowseLevel.MY_MUSIC to listOf(BrowseLevel.ROOT)
-    "ARTISTS", "GENRES", "FOLDER", "FAVORITES", "PLAYLISTS", "SEARCH" ->
+    "ARTISTS", "GENRES", "FOLDER", "FAVORITES", "PLAYLISTS", "SEARCH", "NEW_MUSIC", "ALBUM_ARTISTS", "COMPOSERS", "YEARS" ->
         BrowseLevel.valueOf(section) to listOf(BrowseLevel.ROOT, BrowseLevel.MY_MUSIC)
     "RADIO", "MIX" -> BrowseLevel.valueOf(section) to listOf(BrowseLevel.ROOT)
     else -> BrowseLevel.ROOT to emptyList()
@@ -152,13 +154,38 @@ fun BrowseScreen() {
     var artists by remember { mutableStateOf<List<BrowseItem>?>(null) }
     val artistListState = rememberLazyListState()
     var selectedArtistIndex by remember { mutableIntStateOf(0) }
+    // Album artists: same list, restricted to the album-artist role.
+    var albumArtists by remember { mutableStateOf<List<BrowseItem>?>(null) }
+    val albumArtistListState = rememberLazyListState()
+    var selectedAlbumArtistIndex by remember { mutableIntStateOf(0) }
+    // Years: list of years, then the albums of the chosen year.
+    var years by remember { mutableStateOf<List<BrowseItem>?>(null) }
+    val yearListState = rememberLazyListState()
+    var selectedYearIndex by remember { mutableIntStateOf(0) }
+    var chosenYear by remember { mutableStateOf<BrowseItem?>(null) }
+    var yearAlbums by remember { mutableStateOf<List<BrowseItem>?>(null) }
+    val yearAlbumListState = rememberLazyListState()
+    var selectedYearAlbumIndex by remember { mutableIntStateOf(0) }
+
+    // Composers: same list, restricted to the composer role.
+    var composers by remember { mutableStateOf<List<BrowseItem>?>(null) }
+    val composerListState = rememberLazyListState()
+    var selectedComposerIndex by remember { mutableIntStateOf(0) }
     var chosenArtist by remember { mutableStateOf<BrowseItem?>(null) }
 
     // Albums of the chosen artist.
     var albums by remember { mutableStateOf<List<BrowseItem>?>(null) }
     var albumsArtistId by remember { mutableStateOf("") }
+    // Role the albums list is filtered on (composers); "" = normal artist albums.
+    var albumsRole by remember { mutableStateOf("") }
+    var pendingAlbumsRole by remember { mutableStateOf("") }
     val albumListState = rememberLazyListState()
     var selectedAlbumIndex by remember { mutableIntStateOf(0) }
+
+    // New Music: the newest albums, kept while the panel is open.
+    var newAlbums by remember { mutableStateOf<List<BrowseItem>?>(null) }
+    val newListState = rememberLazyListState()
+    var selectedNewIndex by remember { mutableIntStateOf(0) }
     var chosenAlbum by remember { mutableStateOf<BrowseItem?>(null) }
 
     // The track the action menu (play now / next / add) is open for.
@@ -226,10 +253,13 @@ fun BrowseScreen() {
     val chooseArtist: (BrowseItem) -> Unit = { artist ->
         // A different artist means a different album list; the same artist
         // keeps its list and position.
-        if (artist.id != albumsArtistId) {
+        val role = pendingAlbumsRole
+        pendingAlbumsRole = ""
+        if (artist.id != albumsArtistId || role != albumsRole) {
             albums = null
             selectedAlbumIndex = 0
             albumsArtistId = artist.id
+            albumsRole = role
         }
         chosenArtist = artist
         go(BrowseLevel.ALBUMS)
@@ -297,6 +327,10 @@ fun BrowseScreen() {
                 text = when (level) {
                     BrowseLevel.ROOT -> stringResource(R.string.browse_title)
                     BrowseLevel.ARTISTS -> stringResource(R.string.browse_artists)
+                    BrowseLevel.ALBUM_ARTISTS -> stringResource(R.string.browse_album_artists)
+                    BrowseLevel.COMPOSERS -> stringResource(R.string.browse_composers)
+                    BrowseLevel.YEARS -> stringResource(R.string.browse_years)
+                    BrowseLevel.YEAR_ALBUMS -> chosenYear?.name ?: stringResource(R.string.browse_years)
                     BrowseLevel.ALBUMS -> chosenArtist?.name ?: stringResource(R.string.browse_albums)
                     BrowseLevel.TRACKS -> chosenAlbum?.name ?: stringResource(R.string.browse_tracks)
                     BrowseLevel.TRACK_ACTIONS -> actionTrack?.title ?: stringResource(R.string.browse_track)
@@ -308,6 +342,7 @@ fun BrowseScreen() {
                     BrowseLevel.FAVORITES -> favPath.lastOrNull()?.name ?: stringResource(R.string.browse_favorites)
                     BrowseLevel.FAVORITE_ACTIONS -> actionFavorite?.name ?: stringResource(R.string.browse_favorite)
                     BrowseLevel.PLAYLISTS -> stringResource(R.string.browse_playlists)
+                    BrowseLevel.NEW_MUSIC -> stringResource(R.string.browse_new_music)
                     BrowseLevel.RADIO -> radioPath.lastOrNull()?.name ?: stringResource(R.string.browse_radio)
                     BrowseLevel.RADIO_ACTIONS -> actionRadio?.name ?: stringResource(R.string.browse_radio)
                     BrowseLevel.RADIO_SEARCH -> radioSearch.name
@@ -373,6 +408,9 @@ fun BrowseScreen() {
                 BrowseLevel.MY_MUSIC -> MyMusicList(
                     onSearch = { go(BrowseLevel.SEARCH) },
                     onArtists = { go(BrowseLevel.ARTISTS) },
+                    onAlbumArtists = { go(BrowseLevel.ALBUM_ARTISTS) },
+                    onComposers = { go(BrowseLevel.COMPOSERS) },
+                    onYears = { go(BrowseLevel.YEARS) },
                     onGenres = { go(BrowseLevel.GENRES) },
                     onFolders = {
                         folderPath.clear()
@@ -385,6 +423,19 @@ fun BrowseScreen() {
                         go(BrowseLevel.FAVORITES)
                     },
                     onPlaylists = { go(BrowseLevel.PLAYLISTS) },
+                    onNewMusic = { go(BrowseLevel.NEW_MUSIC) },
+                )
+                BrowseLevel.NEW_MUSIC -> AlbumList(
+                    artistId = "",
+                    newest = true,
+                    albums = newAlbums,
+                    onLoaded = { newAlbums = it },
+                    listState = newListState,
+                    selectedIndex = selectedNewIndex,
+                    onSelect = { index ->
+                        selectedNewIndex = index
+                        newAlbums?.getOrNull(index)?.let { chooseAlbum(it) }
+                    }
                 )
                 BrowseLevel.RADIO -> RadioList(
                     path = radioPath,
@@ -468,6 +519,57 @@ fun BrowseScreen() {
                         onTrack = chooseTrack,
                     )
                 }
+                BrowseLevel.YEARS -> LoadedList(
+                    items = years,
+                    load = { LMS.getYears() },
+                    onLoaded = { years = it },
+                    emptyText = stringResource(R.string.browse_no_albums),
+                    listState = yearListState,
+                    selectedIndex = selectedYearIndex,
+                    onSelect = { index ->
+                        selectedYearIndex = index
+                        years?.getOrNull(index)?.let {
+                            if (it.id != chosenYear?.id) { yearAlbums = null; selectedYearAlbumIndex = 0 }
+                            chosenYear = it
+                            go(BrowseLevel.YEAR_ALBUMS)
+                        }
+                    }
+                )
+                BrowseLevel.YEAR_ALBUMS -> AlbumList(
+                    artistId = "",
+                    year = chosenYear?.id ?: "",
+                    albums = yearAlbums,
+                    onLoaded = { yearAlbums = it },
+                    listState = yearAlbumListState,
+                    selectedIndex = selectedYearAlbumIndex,
+                    onSelect = { index ->
+                        selectedYearAlbumIndex = index
+                        yearAlbums?.getOrNull(index)?.let { chooseAlbum(it) }
+                    }
+                )
+                BrowseLevel.COMPOSERS -> ArtistList(
+                    role = "COMPOSER",
+                    artists = composers,
+                    onLoaded = { composers = it },
+                    listState = composerListState,
+                    selectedIndex = selectedComposerIndex,
+                    onSelect = { index ->
+                        selectedComposerIndex = index
+                        pendingAlbumsRole = "COMPOSER"
+                        composers?.getOrNull(index)?.let { chooseArtist(it) }
+                    }
+                )
+                BrowseLevel.ALBUM_ARTISTS -> ArtistList(
+                    role = "ALBUMARTIST",
+                    artists = albumArtists,
+                    onLoaded = { albumArtists = it },
+                    listState = albumArtistListState,
+                    selectedIndex = selectedAlbumArtistIndex,
+                    onSelect = { index ->
+                        selectedAlbumArtistIndex = index
+                        albumArtists?.getOrNull(index)?.let { chooseArtist(it) }
+                    }
+                )
                 BrowseLevel.ARTISTS -> ArtistList(
                     artists = artists,
                     onLoaded = { artists = it },
@@ -480,6 +582,7 @@ fun BrowseScreen() {
                 )
                 BrowseLevel.ALBUMS -> AlbumList(
                     artistId = chosenArtist?.id ?: "",
+                    role = albumsRole,
                     albums = albums,
                     onLoaded = { albums = it },
                     listState = albumListState,
@@ -552,17 +655,28 @@ private fun MyMusicList(
     onFolders: () -> Unit,
     onFavorites: () -> Unit,
     onPlaylists: () -> Unit,
+    onNewMusic: () -> Unit,
+    onAlbumArtists: () -> Unit,
+    onComposers: () -> Unit,
+    onYears: () -> Unit,
 ) {
     val firstFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { firstFocus.requestFocus() }
 
-    Column {
-        BrowseRow(stringResource(R.string.browse_search), onClick = onSearch, modifier = Modifier.focusRequester(firstFocus), icon = SearchIcon)
-        BrowseRow(stringResource(R.string.browse_artists), onClick = onArtists, icon = ArtistsIcon)
-        BrowseRow(stringResource(R.string.browse_genres), onClick = onGenres, icon = GenresIcon)
-        BrowseRow(stringResource(R.string.browse_music_folder), onClick = onFolders, icon = MusicFolderIcon)
-        BrowseRow(stringResource(R.string.browse_favorites), onClick = onFavorites, icon = FavoritesIcon)
-        BrowseRow(stringResource(R.string.browse_playlists), onClick = onPlaylists, icon = PlaylistsIcon)
+    // Items switched off in Settings (My Music items) are left out; Search always stays.
+    val hidden = AppConfig.current.hiddenMyMusic
+    // Scrolls (with the fade + arrow hint) when more rows are on than fit.
+    HintLazyColumn {
+        item { BrowseRow(stringResource(R.string.browse_search), onClick = onSearch, modifier = Modifier.focusRequester(firstFocus), icon = SearchIcon) }
+        if ("albumartists" !in hidden) item { BrowseRow(stringResource(R.string.browse_album_artists), onClick = onAlbumArtists, icon = ArtistsIcon) }
+        if ("artists" !in hidden) item { BrowseRow(stringResource(R.string.browse_artists), onClick = onArtists, icon = ArtistsIcon) }
+        if ("composers" !in hidden) item { BrowseRow(stringResource(R.string.browse_composers), onClick = onComposers, icon = ArtistsIcon) }
+        if ("genres" !in hidden) item { BrowseRow(stringResource(R.string.browse_genres), onClick = onGenres, icon = GenresIcon) }
+        if ("years" !in hidden) item { BrowseRow(stringResource(R.string.browse_years), onClick = onYears, icon = Icons.Outlined.MusicNote) }
+        if ("newmusic" !in hidden) item { BrowseRow(stringResource(R.string.browse_new_music), onClick = onNewMusic, icon = Icons.Outlined.MusicNote) }
+        if ("folders" !in hidden) item { BrowseRow(stringResource(R.string.browse_music_folder), onClick = onFolders, icon = MusicFolderIcon) }
+        if ("favorites" !in hidden) item { BrowseRow(stringResource(R.string.browse_favorites), onClick = onFavorites, icon = FavoritesIcon) }
+        if ("playlists" !in hidden) item { BrowseRow(stringResource(R.string.browse_playlists), onClick = onPlaylists, icon = PlaylistsIcon) }
     }
 }
 
@@ -1705,6 +1819,7 @@ private fun SectionHeader(text: String) {
 
 @Composable
 private fun ArtistList(
+    role: String = "",
     artists: List<BrowseItem>?,
     onLoaded: (List<BrowseItem>) -> Unit,
     listState: LazyListState,
@@ -1713,7 +1828,7 @@ private fun ArtistList(
 ) {
     LaunchedEffect(Unit) {
         if (artists == null) {
-            onLoaded(withContext(Dispatchers.IO) { LMS.getArtists(count = 100000) })
+            onLoaded(withContext(Dispatchers.IO) { LMS.getArtists(count = 100000, role = role) })
         }
     }
 
@@ -1823,15 +1938,18 @@ private fun AlphabetStrip(letters: List<String>, selected: Int, onMove: (Int) ->
 @Composable
 private fun AlbumList(
     artistId: String,
+    year: String = "",
+    role: String = "",
+    newest: Boolean = false,
     albums: List<BrowseItem>?,
     onLoaded: (List<BrowseItem>) -> Unit,
     listState: LazyListState,
     selectedIndex: Int,
     onSelect: (Int) -> Unit,
 ) {
-    LaunchedEffect(artistId, albums == null) {
+    LaunchedEffect(artistId, year, newest, albums == null) {
         if (albums == null) {
-            onLoaded(withContext(Dispatchers.IO) { LMS.getAlbums(artistId) })
+            onLoaded(withContext(Dispatchers.IO) { if (newest) LMS.getNewAlbums() else if (year.isNotEmpty()) LMS.getAlbumsByYear(year) else LMS.getAlbums(artistId, role = role) })
         }
     }
 
@@ -1856,6 +1974,7 @@ private fun AlbumList(
         items(albums.size) { index ->
             ThumbRow(
                 text = albums[index].name,
+                subtitle = albums[index].subtitle,
                 imageUrl = coverUrl(albums[index].artworkId),
                 placeholder = Icons.Outlined.MusicNote,
                 round = false,

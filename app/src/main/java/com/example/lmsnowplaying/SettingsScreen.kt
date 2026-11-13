@@ -13,6 +13,17 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -61,6 +72,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.lmsnowplaying.composable.BackgroundMenuIcon
 import com.example.lmsnowplaying.composable.FilmstripIcon
 import com.example.lmsnowplaying.composable.ServerIcon
@@ -75,6 +87,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import com.example.lmsnowplaying.settings.AppConfig
+import com.example.lmsnowplaying.settings.NavState
 import com.example.lmsnowplaying.network.logitechmediaserver.LMS
 
 // Saves run one after the other so an older snapshot can never overwrite a newer one.
@@ -97,6 +110,10 @@ private fun normalizeUrl(input: String): String {
  * D-pad, choice lists for the options, and separate fill-in screens for the
  * server details (the only place where typing is needed).
  */
+// Default-player list: fixed row height, so it always shows whole rows.
+private val DEF_ROW_HEIGHT = 44.dp
+private const val DEF_ROWS_VISIBLE = 6
+
 @Preview(heightDp = 540, widthDp = 960)
 @Composable
 fun SettingsScreen(
@@ -129,6 +146,8 @@ fun SettingsScreen(
     var defaultPlayerName by remember { mutableStateOf(initial.defaultPlayerName) }
     var defaultPlayerMac by remember { mutableStateOf(initial.defaultPlayerMac) }
     var onlyControlDefault by remember { mutableStateOf(initial.onlyControlDefault) }
+    var hiddenPlayers by remember { mutableStateOf(initial.hiddenPlayers) }
+    var hiddenMyMusic by remember { mutableStateOf(initial.hiddenMyMusic) }
     // Connected players, captured when the Default player list is opened.
     var defPlayers by remember { mutableStateOf(listOf<Pair<String, String>>()) }
 
@@ -137,6 +156,8 @@ fun SettingsScreen(
     var popup by remember { mutableStateOf("") }
     var highlighted by remember { mutableStateOf(0) }
     var popupIndex by remember { mutableStateOf(0) }
+    // Default-player menu: -1 = the ⓘ button next to the title; the text shows after OK on it.
+    var defInfoShown by remember { mutableStateOf(false) }
 
     val bgValues = listOf(
         SettingsRepository.BACKGROUND_STYLE_ARTIST,
@@ -168,7 +189,14 @@ fun SettingsScreen(
     val hasCancel = onCancel != null
     val saveRow = 7
     // Row 7: Default player (from the ⋮ menu) or Save and start (first start).
-    val rowCount = 8
+    // Row 8 (only from the ⋮ menu): which items My Music shows.
+    val rowCount = if (hasCancel) 9 else 8
+    val myMusicIds = listOf("albumartists", "artists", "composers", "genres", "years", "newmusic", "folders", "favorites", "playlists")
+    val myMusicLabels = listOf(
+        stringResource(R.string.browse_album_artists), stringResource(R.string.browse_artists), stringResource(R.string.browse_composers), stringResource(R.string.browse_genres),
+        stringResource(R.string.browse_years), stringResource(R.string.browse_new_music), stringResource(R.string.browse_music_folder), stringResource(R.string.browse_favorites),
+        stringResource(R.string.browse_playlists)
+    )
 
     val buildSettings: () -> SettingsRepository.Settings = {
         SettingsRepository.Settings(
@@ -182,6 +210,8 @@ fun SettingsScreen(
             defaultPlayerName = defaultPlayerName,
             defaultPlayerMac = defaultPlayerMac,
             onlyControlDefault = onlyControlDefault && defaultPlayerMac.isNotEmpty(),
+            hiddenPlayers = hiddenPlayers,
+            hiddenMyMusic = hiddenMyMusic,
             backgroundStyle = backgroundStyle,
             standbyOnExit = standbyOnExit,
             volumeStep = volumeStep,
@@ -302,6 +332,21 @@ fun SettingsScreen(
         if (popup.isNotEmpty()) popup = "" else { commitServers(); screen = "list" }
     }
 
+    // Keep the highlighted row of the default-player list in view.
+    val defListState = rememberLazyListState()
+    LaunchedEffect(popupIndex, popup) {
+        if (popup == "defplayer") {
+            val n = defPlayers.size + 1
+            if (popupIndex == -1) defListState.scrollToItem(0)
+            else if (popupIndex in 0 until n) {
+                val first = defListState.firstVisibleItemIndex
+                val visible = defListState.layoutInfo.visibleItemsInfo.size.coerceAtLeast(1)
+                if (popupIndex < first) defListState.scrollToItem(popupIndex)
+                else if (popupIndex > first + visible - 1) defListState.scrollToItem(popupIndex - visible + 1)
+            }
+        }
+    }
+
     val rootFocus = remember { FocusRequester() }
     var rootHasFocus by remember { mutableStateOf(false) }
     // Keep asking until the list really has key focus (see the ⋮ menu).
@@ -316,8 +361,28 @@ fun SettingsScreen(
         }
     }
 
+    // Opened from the ⋮ menu: close by itself after 15 s without a key press or
+    // typing (not on first start). Everything is autosaved; a field still being
+    // edited is committed first, like Back does.
+    var lastSettingsKey by remember { mutableStateOf(System.currentTimeMillis()) }
+    if (hasCancel) {
+        LaunchedEffect(Unit) {
+            while (true) {
+                delay(1000)
+                val idle = System.currentTimeMillis() - maxOf(lastSettingsKey, NavState.lastTyped)
+                if (idle > 15_000) {
+                    if (screen != "list") commitServers()
+                    // Idle close: back to Now Playing, not into the ⋮ menu.
+                    NavState.reopenMenu = false
+                    onCancel?.invoke()
+                    return@LaunchedEffect
+                }
+            }
+        }
+    }
+
     MaterialTheme(colorScheme = darkColorScheme()) {
-        Box(Modifier.fillMaxSize().background(Color.Black)) {
+        Box(Modifier.fillMaxSize().background(Color.Black).onPreviewKeyEvent { lastSettingsKey = System.currentTimeMillis(); false }) {
             if (screen == "list") {
                 Column(
                     modifier = Modifier
@@ -339,17 +404,36 @@ fun SettingsScreen(
                                     "vol" -> volValues.size
                                     "seek" -> seekValues.size
                                     "defplayer" -> defPlayers.size + 2
+                                    "mymusic" -> myMusicIds.size
                                     else -> playerRows.size
                                 }
                                 when {
+                                    // Default-player menu: up from the first row goes to the ⓘ button.
+                                    popup == "defplayer" && event.key == Key.DirectionDown ->
+                                        popupIndex = if (popupIndex == -1) 0 else (popupIndex + 1) % count
+                                    popup == "defplayer" && event.key == Key.DirectionUp ->
+                                        popupIndex = if (popupIndex == 0) -1 else if (popupIndex == -1) count - 1 else popupIndex - 1
                                     event.key == Key.DirectionDown -> popupIndex = (popupIndex + 1) % count
                                     event.key == Key.DirectionUp -> popupIndex = (popupIndex - 1 + count) % count
+                                    // Default-player list: D-pad right shows/hides that player in the ⋮ menu.
+                                    event.key == Key.DirectionRight && popup == "defplayer" && popupIndex in 1..defPlayers.size -> {
+                                        val mac = defPlayers[popupIndex - 1].second
+                                        hiddenPlayers = if (mac in hiddenPlayers) hiddenPlayers - mac else hiddenPlayers + mac
+                                        persist()
+                                    }
                                     isOk -> when (popup) {
                                         "bg" -> { backgroundStyle = bgValues[popupIndex]; popup = ""; persist() }
                                         "vol" -> { volumeStep = volValues[popupIndex]; popup = ""; persist() }
                                         "seek" -> { seekStep = seekValues[popupIndex]; popup = ""; persist() }
+                                        "mymusic" -> {
+                                            val id = myMusicIds[popupIndex]
+                                            hiddenMyMusic = if (id in hiddenMyMusic) hiddenMyMusic - id else hiddenMyMusic + id
+                                            persist()
+                                        }
                                         "defplayer" -> {
-                                            if (popupIndex == defPlayers.size + 1) {
+                                            if (popupIndex == -1) {
+                                                defInfoShown = !defInfoShown
+                                            } else if (popupIndex == defPlayers.size + 1) {
                                                 // Switch: only possible with a default player chosen.
                                                 if (defaultPlayerMac.isNotEmpty()) {
                                                     onlyControlDefault = !onlyControlDefault
@@ -401,8 +485,10 @@ fun SettingsScreen(
                                     7 -> if (!hasCancel) doSave() else if (AppConfig.current.lmsUrl.isNotBlank()) {
                                         defPlayers = LMS.players.toList()
                                         popupIndex = defPlayers.indexOfFirst { it.second == defaultPlayerMac } + 1
+                                        defInfoShown = false
                                         popup = "defplayer"
                                     }
+                                    8 -> if (hasCancel) { popupIndex = 0; popup = "mymusic" }
                                 }
                                 else -> return@onKeyEvent false
                             }
@@ -428,11 +514,86 @@ fun SettingsScreen(
                                 SRow((if (seekStep == v) "●  " else "○  ") + "$v s", null, popupIndex == i)
                             }
                         }
+                        "mymusic" -> {
+                            SRow(stringResource(R.string.settings_mymusic_items), null, false, bold = true)
+                            myMusicIds.forEachIndexed { i, id ->
+                                SRow((if (id in hiddenMyMusic) "☐  " else "☑  ") + myMusicLabels[i], null, popupIndex == i)
+                            }
+                        }
                         "defplayer" -> {
-                            SRow(stringResource(R.string.menu_default_player_prefix), Icons.Filled.Check, false, bold = true)
-                            SRow((if (defaultPlayerMac.isEmpty()) "●  " else "○  ") + noneLabel, null, popupIndex == 0)
-                            defPlayers.forEachIndexed { i, p ->
-                                SRow((if (defaultPlayerMac == p.second) "●  " else "○  ") + p.first, null, popupIndex == i + 1)
+                            val listCount = defPlayers.size + 1
+                            val listScrolls = listCount > DEF_ROWS_VISIBLE
+                            val position = if (popupIndex in 0 until listCount) "${popupIndex + 1}/$listCount" else "$listCount"
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+                            ) {
+                                Icon(imageVector = Icons.Filled.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                                Text(
+                                    text = stringResource(R.string.menu_default_player_prefix) + if (listScrolls) " ($position)" else "",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(start = 10.dp)
+                                )
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier
+                                        .padding(start = 8.dp)
+                                        .size(28.dp)
+                                        .clip(CircleShape)
+                                        .background(if (popupIndex == -1) Color.White.copy(alpha = 0.3f) else Color.Transparent)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Info,
+                                        contentDescription = "Info",
+                                        tint = Color.White.copy(alpha = 0.8f),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                            if (defInfoShown) {
+                                Text(
+                                    stringResource(R.string.default_player_info),
+                                    color = Color.White.copy(alpha = 0.75f),
+                                    fontSize = 13.sp,
+                                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp)
+                                )
+                            }
+                            LazyColumn(
+                                state = defListState,
+                                modifier = Modifier
+                                    .heightIn(max = DEF_ROW_HEIGHT * DEF_ROWS_VISIBLE)
+                                    .drawWithContent {
+                                        drawContent()
+                                        val info = defListState.layoutInfo
+                                        val total = info.totalItemsCount
+                                        val shown = info.visibleItemsInfo.size
+                                        if (total > shown && shown > 0) {
+                                            drawRoundRect(
+                                                color = Color.White.copy(alpha = 0.85f),
+                                                topLeft = Offset(size.width - 6.dp.toPx(), size.height * defListState.firstVisibleItemIndex / total),
+                                                size = Size(4.dp.toPx(), size.height * shown / total),
+                                                cornerRadius = CornerRadius(2.dp.toPx())
+                                            )
+                                        }
+                                    }
+                            ) {
+                                items(listCount) { i ->
+                                    Box(Modifier.fillMaxWidth().height(DEF_ROW_HEIGHT), contentAlignment = Alignment.CenterStart) {
+                                        if (i == 0) {
+                                            SRow((if (defaultPlayerMac.isEmpty()) "●  " else "○  ") + noneLabel, null, popupIndex == 0)
+                                        } else {
+                                            val p = defPlayers[i - 1]
+                                            SRow(
+                                                (if (defaultPlayerMac == p.second) "●  " else "○  ") + p.first, null, popupIndex == i,
+                                                trailing = { Text(if (p.second in hiddenPlayers) "☐" else "☑", color = Color.White) }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            if (listScrolls) {
+                                Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.3f)))
                             }
                             SRow(
                                 stringResource(R.string.menu_only_control_default), null, popupIndex == defPlayers.size + 1,
@@ -473,6 +634,7 @@ fun SettingsScreen(
                             )
                             if (hasCancel) {
                                 SRow("${stringResource(R.string.menu_default_player_prefix)}: ${defaultPlayerName.ifBlank { noneLabel }}", Icons.Filled.Check, highlighted == 7)
+                                SRow(stringResource(R.string.settings_mymusic_items), null, highlighted == 8)
                             } else {
                                 SRow(stringResource(R.string.settings_save_and_start), null, highlighted == saveRow, bold = true)
                             }
@@ -555,7 +717,7 @@ private fun SettingField(label: String, value: String, onValueChange: (String) -
     }
     OutlinedTextField(
         value = value,
-        onValueChange = { dirty = true; onValueChange(it) },
+        onValueChange = { dirty = true; NavState.lastTyped = System.currentTimeMillis(); onValueChange(it) },
         readOnly = !editing,
         singleLine = true,
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),

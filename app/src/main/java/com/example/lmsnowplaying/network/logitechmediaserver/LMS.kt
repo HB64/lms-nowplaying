@@ -1563,9 +1563,11 @@ object LMS{
         return JSONObject(jsonData).getJSONObject("result").optJSONArray(loopName) ?: JSONArray()
     }
 
-    suspend fun getArtists(count: Int = 500): List<BrowseItem> {
+    // role: Lyrion role token(s) to restrict to (e.g. ALBUMARTIST); empty = the normal list.
+    suspend fun getArtists(count: Int = 500, role: String = ""): List<BrowseItem> {
         return safeCall("getArtists", emptyList()) {
-            val reqString = "{\"method\": \"slim.request\", \"params\": [\"\", [\"artists\", 0, $count]]}"
+            val roleParam = if (role.isNotEmpty()) ", \"role_id:$role\"" else ""
+            val reqString = "{\"method\": \"slim.request\", \"params\": [\"\", [\"artists\", 0, $count$roleParam]]}"
             val requestBody = reqString.toRequestBody("application/json".toMediaTypeOrNull())
             val res = lmsApi.browseArtists(requestBody)
             val jsonData: String? = res.body()?.string()
@@ -1581,9 +1583,11 @@ object LMS{
         }
     }
 
-    suspend fun getAlbums(artistId: String, count: Int = 500): List<BrowseItem> {
+    // role: restrict to albums where the artist has this role (e.g. COMPOSER); empty = normal.
+    suspend fun getAlbums(artistId: String, count: Int = 500, role: String = ""): List<BrowseItem> {
         return safeCall("getAlbums", emptyList()) {
-            val reqString = "{\"method\": \"slim.request\", \"params\": [\"\", [\"albums\", 0, $count, \"artist_id:$artistId\", \"sort:yearalbum\", \"tags:lj\"]]}"
+            val roleParam = if (role.isNotEmpty()) ", \"role_id:$role\"" else ""
+            val reqString = "{\"method\": \"slim.request\", \"params\": [\"\", [\"albums\", 0, $count, \"artist_id:$artistId\"$roleParam, \"sort:yearalbum\", \"tags:lj\"]]}"
             val requestBody = reqString.toRequestBody("application/json".toMediaTypeOrNull())
             val res = lmsApi.browseAlbums(requestBody)
             val jsonData: String? = res.body()?.string()
@@ -1596,6 +1600,40 @@ object LMS{
                 list.add(BrowseItem(item.optString("id"), item.optString("album"), item.optString("artwork_track_id")))
             }
             list
+        }
+    }
+
+    // Years that have albums, newest first (year 0 = no year tag is left out).
+    suspend fun getYears(): List<BrowseItem> {
+        return safeCall("getYears", emptyList()) {
+            val loop = rpcLoop(listOf("years", 0, 1000), "years_loop")
+            (0 until loop.length())
+                .map { loop.getJSONObject(it).optString("year") }
+                .filter { it.isNotEmpty() && it != "0" }
+                .sortedDescending()
+                .map { BrowseItem(it, it) }
+        }
+    }
+
+    // Albums of one year, with the artist as second line.
+    suspend fun getAlbumsByYear(year: String, count: Int = 1000): List<BrowseItem> {
+        return safeCall("getAlbumsByYear", emptyList()) {
+            val loop = rpcLoop(listOf("albums", 0, count, "year:$year", "sort:album", "tags:lja"), "albums_loop")
+            (0 until loop.length()).map {
+                val o = loop.getJSONObject(it)
+                BrowseItem(o.optString("id"), o.optString("album"), o.optString("artwork_track_id"), o.optString("artist"))
+            }
+        }
+    }
+
+    // Newest albums first (Lyrion sort:new), with the artist as second line.
+    suspend fun getNewAlbums(count: Int = 200): List<BrowseItem> {
+        return safeCall("getNewAlbums", emptyList()) {
+            val loop = rpcLoop(listOf("albums", 0, count, "sort:new", "tags:lja"), "albums_loop")
+            (0 until loop.length()).map {
+                val o = loop.getJSONObject(it)
+                BrowseItem(o.optString("id"), o.optString("album"), o.optString("artwork_track_id"), o.optString("artist"))
+            }
         }
     }
 

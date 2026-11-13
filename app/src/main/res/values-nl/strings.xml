@@ -22,6 +22,9 @@
     <string name="settings_cancel">Annuleren</string>
     <string name="menu_settings">Instellingen</string>
     <string name="menu_background_prefix">Achtergrond</string>
+    <string name="menu_players_header">Spelers</string>
+    <string name="default_player_info">OK kiest de standaardspeler. D-pad rechts toont of verbergt een speler in het ⋮-menu (☑ = zichtbaar); verborgen spelers blijven actief, ze staan alleen niet in de lijst. “Alleen standaardspeler bedienen” beperkt de app tot de standaardspeler.</string>
+    <string name="settings_mymusic_items">Mijn Muziek-items</string>
     <string name="menu_standby_prefix">Stand-by bij afsluiten</string>
     <string name="menu_standby_on">Aan</string>
     <string name="settings_volume_step_section">Volumestap (volumetoetsen)</string>
@@ -38,6 +41,10 @@
 
     <!-- Browse / queue / mix / favorites -->
     <string name="browse_title">Bladeren</string>
+    <string name="browse_new_music">Nieuwe Muziek</string>
+    <string name="browse_album_artists">Albumartiesten</string>
+    <string name="browse_composers">Composities</string>
+    <string name="browse_years">Jaren</string>
     <string name="browse_artists">Artiesten</string>
     <string name="browse_albums">Albums</string>
     <string name="browse_tracks">Nummers</string>

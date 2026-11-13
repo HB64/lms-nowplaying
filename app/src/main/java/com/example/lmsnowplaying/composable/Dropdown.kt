@@ -7,6 +7,16 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -41,6 +51,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.lmsnowplaying.LocalPlayer
 import com.example.lmsnowplaying.R
 import com.example.lmsnowplaying.network.logitechmediaserver.LMS
@@ -52,6 +63,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+// Player rows have a fixed height so the list always shows whole rows.
+private val PLAYER_ROW_HEIGHT = 44.dp
+private const val PLAYER_ROWS_VISIBLE = 6
+
 @Preview
 @Composable
 fun MyUI() {
@@ -61,7 +76,7 @@ fun MyUI() {
     @Suppress("UNUSED_VARIABLE")
     val playersVersion = LMS.playersVersion.collectAsState().value
     data.clear()
-    data.addAll(LMS.players)
+    data.addAll(LMS.players.filter { it.second !in AppConfig.current.hiddenPlayers })
 
     // Keep the player list fresh: players come and go (e.g. a player app
     // that is still connecting). 10 s normally, 2 s after a player app start.
@@ -211,6 +226,18 @@ fun MyUI() {
             val localRowIndex = if (hasLocal) listCount + 1 else -1
             val settingsRowIndex = totalItems - 1
             val menuFocusRequester = remember { FocusRequester() }
+            // The player list scrolls inside a limited height, so the rows below
+            // it (Standby, Settings) always stay reachable with many players.
+            val playerListState = rememberLazyListState()
+            LaunchedEffect(highlightedIndex) {
+                if (highlightedIndex in 0 until listCount) {
+                    val info = playerListState.layoutInfo
+                    val first = playerListState.firstVisibleItemIndex
+                    val visible = info.visibleItemsInfo.size.coerceAtLeast(1)
+                    if (highlightedIndex < first) playerListState.scrollToItem(highlightedIndex)
+                    else if (highlightedIndex > first + visible - 1) playerListState.scrollToItem(highlightedIndex - visible + 1)
+                }
+            }
 
             // Quick toggle for whether the active player is put into standby
             // when the app closes - same reasoning as the background-style
@@ -220,6 +247,18 @@ fun MyUI() {
             // The first requestFocus can happen before the menu is ready for
             // it, which left the menu open without key focus (D-pad did
             // nothing). Keep asking until the menu really has focus.
+            // Close by itself after 15 s without a key press, like the other panels.
+            var lastMenuKey by remember { mutableStateOf(System.currentTimeMillis()) }
+            LaunchedEffect(Unit) {
+                while (true) {
+                    kotlinx.coroutines.delay(1000)
+                    if (System.currentTimeMillis() - lastMenuKey > 15_000) {
+                        expanded = false
+                        return@LaunchedEffect
+                    }
+                }
+            }
+
             LaunchedEffect(Unit) {
                 while (true) {
                     if (!menuHasFocus) {
@@ -248,6 +287,7 @@ fun MyUI() {
                     .focusable()
                     .onKeyEvent { event ->
                         if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
+                        lastMenuKey = System.currentTimeMillis()
                         when (event.key) {
                             Key.DirectionDown -> {
                                 highlightedIndex = (highlightedIndex + 1) % totalItems
@@ -292,29 +332,72 @@ fun MyUI() {
                         }
                     }
             ) {
-                (if (onlyDefault) emptyList() else data.toList()).forEachIndexed { itemIndex, itemValue ->
-                    val models = LMS.playerModels[itemValue.second]
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(if (highlightedIndex == itemIndex) Color.White.copy(alpha = 0.3f) else Color.Transparent)
-                            .padding(horizontal = 16.dp, vertical = 10.dp)
-                    ) {
-                        Icon(
-                            imageVector = playerIcon(models?.first ?: "", models?.second ?: ""),
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Text(
-                            text = itemValue.first,
-                            color = Color.White,
+                // Only when the list scrolls: a header showing where you are in it,
+                // and a line below it, so it is clear the list scrolls on its own.
+                val listScrolls = listCount > PLAYER_ROWS_VISIBLE
+                if (listScrolls) {
+                    val position = if (highlightedIndex in 0 until listCount) "${highlightedIndex + 1}/$listCount" else "$listCount"
+                    Text(
+                        text = "${stringResource(R.string.menu_players_header)} ($position)",
+                        color = Color.White.copy(alpha = 0.6f),
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                    )
+                }
+                LazyColumn(
+                    state = playerListState,
+                    modifier = Modifier
+                        .heightIn(max = PLAYER_ROW_HEIGHT * PLAYER_ROWS_VISIBLE)
+                        // Thin scrollbar at the right edge, only when the list is longer
+                        // than what fits, so it is clear that there are more players.
+                        .drawWithContent {
+                            drawContent()
+                            val info = playerListState.layoutInfo
+                            val total = info.totalItemsCount
+                            val shown = info.visibleItemsInfo.size
+                            if (total > shown && shown > 0) {
+                                val thumbH = size.height * shown / total
+                                val thumbTop = size.height * playerListState.firstVisibleItemIndex / total
+                                drawRoundRect(
+                                    color = Color.White.copy(alpha = 0.85f),
+                                    topLeft = Offset(size.width - 6.dp.toPx(), thumbTop),
+                                    size = Size(4.dp.toPx(), thumbH),
+                                    cornerRadius = CornerRadius(2.dp.toPx())
+                                )
+                            }
+                        }
+                ) {
+                    itemsIndexed(if (onlyDefault) emptyList() else data.toList()) { itemIndex, itemValue ->
+                        val models = LMS.playerModels[itemValue.second]
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
-                                .weight(1f)
-                                .padding(horizontal = 10.dp)
-                        )
+                                .fillMaxWidth()
+                                .height(PLAYER_ROW_HEIGHT)
+                                .background(if (highlightedIndex == itemIndex) Color.White.copy(alpha = 0.3f) else Color.Transparent)
+                                .padding(horizontal = 16.dp)
+                        ) {
+                            Icon(
+                                imageVector = playerIcon(models?.first ?: "", models?.second ?: ""),
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = itemValue.first,
+                                color = Color.White,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(horizontal = 10.dp)
+                            )
+                        }
                     }
+                }
+
+                if (listScrolls) {
+                    Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.3f)))
                 }
 
                 val standbyLabel = if (standbyOnExit)

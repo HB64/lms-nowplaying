@@ -286,9 +286,11 @@ fun PlayerScreen(){
                     // sometimes sends a synthetic numeric coverid that's just
                     // the same (negative) value as the track id, with no
                     // actual cover behind it - the real art for those comes
-                    // via artwork_url instead. Treat a purely-numeric coverid
-                    // as "no real coverid" so we use artwork_url for it.
-                    val hasRealCoverId = _coverId != "" && _coverId.toLongOrNull() == null
+                    // via artwork_url instead. Treat a negative numeric coverid
+                    // as "no real coverid" so we use artwork_url for it. A positive
+                    // number is a real track id and works in /music/<id>/cover.jpg.
+                    val coverNum = _coverId.toLongOrNull()
+                    val hasRealCoverId = _coverId != "" && (coverNum == null || coverNum > 0)
                     if (!hasRealCoverId && _artworkUrl == ""){
                         // No cover for this track at all - clear every art
                         // field, not just the album art, otherwise the

@@ -22,6 +22,9 @@
     <string name="settings_cancel">Cancel</string>
     <string name="menu_settings">Settings</string>
     <string name="menu_background_prefix">Background</string>
+    <string name="menu_players_header">Players</string>
+    <string name="default_player_info">OK picks the default player. D-pad right shows or hides a player in the ⋮ menu (☑ = shown); hidden players stay active, they are just not listed. “Only control default” limits the app to the default player.</string>
+    <string name="settings_mymusic_items">My Music items</string>
     <string name="menu_standby_prefix">Standby on exit</string>
     <string name="menu_standby_on">On</string>
     <string name="settings_volume_step_section">Volume step (volume keys)</string>
@@ -38,6 +41,10 @@
 
     <!-- Browse / queue / mix / favorites -->
     <string name="browse_title">Browse</string>
+    <string name="browse_new_music">New Music</string>
+    <string name="browse_album_artists">Album artists</string>
+    <string name="browse_composers">Composers</string>
+    <string name="browse_years">Years</string>
     <string name="browse_artists">Artists</string>
     <string name="browse_albums">Albums</string>
     <string name="browse_tracks">Tracks</string>

@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -38,6 +39,8 @@ object SettingsRepository {
     private val LOCAL_PLAYER_AUTOSTART = booleanPreferencesKey("local_player_autostart")
     private val SHOW_VOLUME_SLIDER = booleanPreferencesKey("show_volume_slider")
     private val ONLY_CONTROL_DEFAULT = booleanPreferencesKey("only_control_default")
+    private val HIDDEN_PLAYERS = stringSetPreferencesKey("hidden_players")
+    private val HIDDEN_MY_MUSIC = stringSetPreferencesKey("hidden_my_music")
     private val LOCAL_PLAYER_DEVICE_VOLUME = booleanPreferencesKey("local_player_device_volume")
     private val LOCAL_PLAYER_FIXED_VOLUME = intPreferencesKey("local_player_fixed_volume")
 
@@ -54,6 +57,8 @@ object SettingsRepository {
 
     // Valid values for Settings.localPlayerApp.
     const val LOCAL_PLAYER_NONE = "none"
+    // My Music items that are off until the user switches them on (like Material).
+    val DEFAULT_HIDDEN_MY_MUSIC: Set<String> = setOf("albumartists", "composers", "years")
     const val LOCAL_PLAYER_SBPLAYER = "sbplayer"
     const val LOCAL_PLAYER_SQUEEZELITE = "squeezelite"
 
@@ -99,6 +104,10 @@ object SettingsRepository {
         // Show the volume slider (only applies when SB Player is the local player).
         val showVolumeSlider: Boolean = true,
         val onlyControlDefault: Boolean = false,
+        // MAC addresses of players hidden from the ⋮ menu list.
+        val hiddenPlayers: Set<String> = emptySet(),
+        // Items of the Browse > My Music list that are switched off (artists, genres, folders, favorites, playlists).
+        val hiddenMyMusic: Set<String> = DEFAULT_HIDDEN_MY_MUSIC,
         // Slider and volume keys control this device's volume when the selected player is the local player.
         val localPlayerDeviceVolume: Boolean = false,
         // Squeezelite in Lyrion: 1 = fixed at 100%, 0 = variable (default). Sent whenever the player connects.
@@ -127,6 +136,8 @@ object SettingsRepository {
                 localPlayerStopOnExit = prefs[LOCAL_PLAYER_STOP_ON_EXIT] ?: false,
                 showVolumeSlider = prefs[SHOW_VOLUME_SLIDER] ?: true,
                 onlyControlDefault = prefs[ONLY_CONTROL_DEFAULT] ?: false,
+                hiddenPlayers = prefs[HIDDEN_PLAYERS] ?: emptySet(),
+                hiddenMyMusic = prefs[HIDDEN_MY_MUSIC] ?: DEFAULT_HIDDEN_MY_MUSIC,
                 localPlayerDeviceVolume = prefs[LOCAL_PLAYER_DEVICE_VOLUME] ?: false,
                 localPlayerFixedVolume = prefs[LOCAL_PLAYER_FIXED_VOLUME] ?: 0,
             )
@@ -155,6 +166,8 @@ object SettingsRepository {
             prefs[LOCAL_PLAYER_STOP_ON_EXIT] = settings.localPlayerStopOnExit
             prefs[SHOW_VOLUME_SLIDER] = settings.showVolumeSlider
             prefs[ONLY_CONTROL_DEFAULT] = settings.onlyControlDefault
+            prefs[HIDDEN_PLAYERS] = settings.hiddenPlayers
+            prefs[HIDDEN_MY_MUSIC] = settings.hiddenMyMusic
             prefs[LOCAL_PLAYER_DEVICE_VOLUME] = settings.localPlayerDeviceVolume
             prefs[LOCAL_PLAYER_FIXED_VOLUME] = settings.localPlayerFixedVolume
         }
