@@ -44,6 +44,7 @@
     <string name="browse_new_music">New Music</string>
     <string name="browse_album_artists">Album artists</string>
     <string name="browse_composers">Composers</string>
+    <string name="browse_releases">Releases</string>
     <string name="browse_years">Years</string>
     <string name="browse_artists">Artists</string>
     <string name="browse_albums">Albums</string>

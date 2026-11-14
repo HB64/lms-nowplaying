@@ -191,10 +191,10 @@ fun SettingsScreen(
     // Row 7: Default player (from the ⋮ menu) or Save and start (first start).
     // Row 8 (only from the ⋮ menu): which items My Music shows.
     val rowCount = if (hasCancel) 9 else 8
-    val myMusicIds = listOf("albumartists", "artists", "composers", "genres", "years", "newmusic", "folders", "favorites", "playlists")
+    val myMusicIds = listOf("albumartists", "artists", "composers", "genres", "years", "releases", "newmusic", "folders", "favorites", "playlists")
     val myMusicLabels = listOf(
         stringResource(R.string.browse_album_artists), stringResource(R.string.browse_artists), stringResource(R.string.browse_composers), stringResource(R.string.browse_genres),
-        stringResource(R.string.browse_years), stringResource(R.string.browse_new_music), stringResource(R.string.browse_music_folder), stringResource(R.string.browse_favorites),
+        stringResource(R.string.browse_years), stringResource(R.string.browse_releases), stringResource(R.string.browse_new_music), stringResource(R.string.browse_music_folder), stringResource(R.string.browse_favorites),
         stringResource(R.string.browse_playlists)
     )
 

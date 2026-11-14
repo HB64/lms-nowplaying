@@ -51,6 +51,10 @@ object NavState {
     // (kept while the app runs).
     var lastBrowse = ""
 
+    // The row last focused in each browse list (key = list name), so a list
+    // opens on that row again after the panel was closed.
+    val listFocus = HashMap<String, Int>()
+
     // True while the Queue panel (button at the bottom right) is showing.
     var showQueue by mutableStateOf(false)
 

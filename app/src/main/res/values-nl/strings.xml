@@ -44,6 +44,7 @@
     <string name="browse_new_music">Nieuwe Muziek</string>
     <string name="browse_album_artists">Albumartiesten</string>
     <string name="browse_composers">Composities</string>
+    <string name="browse_releases">Releases</string>
     <string name="browse_years">Jaren</string>
     <string name="browse_artists">Artiesten</string>
     <string name="browse_albums">Albums</string>

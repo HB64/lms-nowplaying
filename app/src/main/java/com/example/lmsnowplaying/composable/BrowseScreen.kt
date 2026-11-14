@@ -67,6 +67,7 @@ import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.SolidColor
@@ -108,7 +109,7 @@ import kotlinx.coroutines.withContext
 private enum class BrowseLevel {
     ROOT, ARTISTS, ALBUMS, TRACKS, TRACK_ACTIONS, SEARCH, GENRES, GENRE_ARTISTS, FOLDER, MIX,
     FAVORITES, FAVORITE_ACTIONS, PLAYLISTS, PLAYLIST_ACTIONS, PLAYLIST_TRACKS, RADIO, RADIO_ACTIONS, RADIO_SEARCH, MY_MUSIC,
-    NEW_MUSIC, ALBUM_ARTISTS, COMPOSERS, YEARS, YEAR_ALBUMS
+    NEW_MUSIC, ALBUM_ARTISTS, COMPOSERS, YEARS, YEAR_ALBUMS, RELEASES
 }
 
 // The part of the panel a level belongs to, and the way back up to it from the
@@ -125,11 +126,15 @@ private fun browseSection(level: BrowseLevel): String = when (level) {
 
 private fun restoreBrowse(section: String): Pair<BrowseLevel, List<BrowseLevel>> = when (section) {
     "MY_MUSIC" -> BrowseLevel.MY_MUSIC to listOf(BrowseLevel.ROOT)
-    "ARTISTS", "GENRES", "FOLDER", "FAVORITES", "PLAYLISTS", "SEARCH", "NEW_MUSIC", "ALBUM_ARTISTS", "COMPOSERS", "YEARS" ->
+    "ARTISTS", "GENRES", "FOLDER", "FAVORITES", "PLAYLISTS", "SEARCH", "NEW_MUSIC", "ALBUM_ARTISTS", "COMPOSERS", "YEARS", "RELEASES" ->
         BrowseLevel.valueOf(section) to listOf(BrowseLevel.ROOT, BrowseLevel.MY_MUSIC)
     "RADIO", "MIX" -> BrowseLevel.valueOf(section) to listOf(BrowseLevel.ROOT)
     else -> BrowseLevel.ROOT to emptyList()
 }
+
+// Remembers which row of a list was focused last (see NavState.listFocus).
+private fun Modifier.trackFocus(key: String, index: Int): Modifier =
+    if (key.isEmpty()) this else this.onFocusChanged { if (it.hasFocus) NavState.listFocus[key] = index }
 
 // Lyrion's default "ignored articles" list.
 private val ignoredArticles = Regex("^(the|el|la|los|las|le|les)\\s+", RegexOption.IGNORE_CASE)
@@ -153,15 +158,15 @@ fun BrowseScreen() {
     // Artist list, kept so going back returns to the same spot without reloading.
     var artists by remember { mutableStateOf<List<BrowseItem>?>(null) }
     val artistListState = rememberLazyListState()
-    var selectedArtistIndex by remember { mutableIntStateOf(0) }
+    var selectedArtistIndex by remember { mutableIntStateOf(NavState.listFocus["ARTISTS"] ?: 0) }
     // Album artists: same list, restricted to the album-artist role.
     var albumArtists by remember { mutableStateOf<List<BrowseItem>?>(null) }
     val albumArtistListState = rememberLazyListState()
-    var selectedAlbumArtistIndex by remember { mutableIntStateOf(0) }
+    var selectedAlbumArtistIndex by remember { mutableIntStateOf(NavState.listFocus["ALBUM_ARTISTS"] ?: 0) }
     // Years: list of years, then the albums of the chosen year.
     var years by remember { mutableStateOf<List<BrowseItem>?>(null) }
     val yearListState = rememberLazyListState()
-    var selectedYearIndex by remember { mutableIntStateOf(0) }
+    var selectedYearIndex by remember { mutableIntStateOf(NavState.listFocus["YEARS"] ?: 0) }
     var chosenYear by remember { mutableStateOf<BrowseItem?>(null) }
     var yearAlbums by remember { mutableStateOf<List<BrowseItem>?>(null) }
     val yearAlbumListState = rememberLazyListState()
@@ -170,7 +175,7 @@ fun BrowseScreen() {
     // Composers: same list, restricted to the composer role.
     var composers by remember { mutableStateOf<List<BrowseItem>?>(null) }
     val composerListState = rememberLazyListState()
-    var selectedComposerIndex by remember { mutableIntStateOf(0) }
+    var selectedComposerIndex by remember { mutableIntStateOf(NavState.listFocus["COMPOSERS"] ?: 0) }
     var chosenArtist by remember { mutableStateOf<BrowseItem?>(null) }
 
     // Albums of the chosen artist.
@@ -185,7 +190,11 @@ fun BrowseScreen() {
     // New Music: the newest albums, kept while the panel is open.
     var newAlbums by remember { mutableStateOf<List<BrowseItem>?>(null) }
     val newListState = rememberLazyListState()
-    var selectedNewIndex by remember { mutableIntStateOf(0) }
+    var selectedNewIndex by remember { mutableIntStateOf(NavState.listFocus["NEW_MUSIC"] ?: 0) }
+    // Releases: all albums by artist and title, kept while the panel is open.
+    var releases by remember { mutableStateOf<List<BrowseItem>?>(null) }
+    val releasesListState = rememberLazyListState()
+    var selectedReleaseIndex by remember { mutableIntStateOf(NavState.listFocus["RELEASES"] ?: 0) }
     var chosenAlbum by remember { mutableStateOf<BrowseItem?>(null) }
 
     // The track the action menu (play now / next / add) is open for.
@@ -197,7 +206,7 @@ fun BrowseScreen() {
     // Genres, and the artists within the chosen genre.
     var genres by remember { mutableStateOf<List<BrowseItem>?>(null) }
     val genreListState = rememberLazyListState()
-    var selectedGenreIndex by remember { mutableIntStateOf(0) }
+    var selectedGenreIndex by remember { mutableIntStateOf(NavState.listFocus["GENRES"] ?: 0) }
     var chosenGenre by remember { mutableStateOf<BrowseItem?>(null) }
     var genreArtists by remember { mutableStateOf<List<BrowseItem>?>(null) }
     var genreArtistsGenreId by remember { mutableStateOf("") }
@@ -343,6 +352,7 @@ fun BrowseScreen() {
                     BrowseLevel.FAVORITE_ACTIONS -> actionFavorite?.name ?: stringResource(R.string.browse_favorite)
                     BrowseLevel.PLAYLISTS -> stringResource(R.string.browse_playlists)
                     BrowseLevel.NEW_MUSIC -> stringResource(R.string.browse_new_music)
+                    BrowseLevel.RELEASES -> stringResource(R.string.browse_releases)
                     BrowseLevel.RADIO -> radioPath.lastOrNull()?.name ?: stringResource(R.string.browse_radio)
                     BrowseLevel.RADIO_ACTIONS -> actionRadio?.name ?: stringResource(R.string.browse_radio)
                     BrowseLevel.RADIO_SEARCH -> radioSearch.name
@@ -424,6 +434,20 @@ fun BrowseScreen() {
                     },
                     onPlaylists = { go(BrowseLevel.PLAYLISTS) },
                     onNewMusic = { go(BrowseLevel.NEW_MUSIC) },
+                    onReleases = { go(BrowseLevel.RELEASES) },
+                )
+                BrowseLevel.RELEASES -> AlbumList(
+                    artistId = "",
+                    all = true,
+                    albums = releases,
+                    onLoaded = { releases = it },
+                    listState = releasesListState,
+                    selectedIndex = selectedReleaseIndex,
+                    focusKey = "RELEASES",
+                    onSelect = { index ->
+                        selectedReleaseIndex = index
+                        releases?.getOrNull(index)?.let { chooseAlbum(it) }
+                    }
                 )
                 BrowseLevel.NEW_MUSIC -> AlbumList(
                     artistId = "",
@@ -432,6 +456,7 @@ fun BrowseScreen() {
                     onLoaded = { newAlbums = it },
                     listState = newListState,
                     selectedIndex = selectedNewIndex,
+                    focusKey = "NEW_MUSIC",
                     onSelect = { index ->
                         selectedNewIndex = index
                         newAlbums?.getOrNull(index)?.let { chooseAlbum(it) }
@@ -495,6 +520,7 @@ fun BrowseScreen() {
                     emptyText = stringResource(R.string.browse_no_genres),
                     listState = genreListState,
                     selectedIndex = selectedGenreIndex,
+                    focusKey = "GENRES",
                     onSelect = { index ->
                         selectedGenreIndex = index
                         genres?.getOrNull(index)?.let { chooseGenre(it) }
@@ -526,6 +552,7 @@ fun BrowseScreen() {
                     emptyText = stringResource(R.string.browse_no_albums),
                     listState = yearListState,
                     selectedIndex = selectedYearIndex,
+                    focusKey = "YEARS",
                     onSelect = { index ->
                         selectedYearIndex = index
                         years?.getOrNull(index)?.let {
@@ -553,6 +580,7 @@ fun BrowseScreen() {
                     onLoaded = { composers = it },
                     listState = composerListState,
                     selectedIndex = selectedComposerIndex,
+                    focusKey = "COMPOSERS",
                     onSelect = { index ->
                         selectedComposerIndex = index
                         pendingAlbumsRole = "COMPOSER"
@@ -565,6 +593,7 @@ fun BrowseScreen() {
                     onLoaded = { albumArtists = it },
                     listState = albumArtistListState,
                     selectedIndex = selectedAlbumArtistIndex,
+                    focusKey = "ALBUM_ARTISTS",
                     onSelect = { index ->
                         selectedAlbumArtistIndex = index
                         albumArtists?.getOrNull(index)?.let { chooseArtist(it) }
@@ -575,6 +604,7 @@ fun BrowseScreen() {
                     onLoaded = { artists = it },
                     listState = artistListState,
                     selectedIndex = selectedArtistIndex,
+                    focusKey = "ARTISTS",
                     onSelect = { index ->
                         selectedArtistIndex = index
                         artists?.getOrNull(index)?.let { chooseArtist(it) }
@@ -656,6 +686,7 @@ private fun MyMusicList(
     onFavorites: () -> Unit,
     onPlaylists: () -> Unit,
     onNewMusic: () -> Unit,
+    onReleases: () -> Unit,
     onAlbumArtists: () -> Unit,
     onComposers: () -> Unit,
     onYears: () -> Unit,
@@ -673,6 +704,7 @@ private fun MyMusicList(
         if ("composers" !in hidden) item { BrowseRow(stringResource(R.string.browse_composers), onClick = onComposers, icon = ArtistsIcon) }
         if ("genres" !in hidden) item { BrowseRow(stringResource(R.string.browse_genres), onClick = onGenres, icon = GenresIcon) }
         if ("years" !in hidden) item { BrowseRow(stringResource(R.string.browse_years), onClick = onYears, icon = Icons.Outlined.MusicNote) }
+        if ("releases" !in hidden) item { BrowseRow(stringResource(R.string.browse_releases), onClick = onReleases, icon = Icons.Outlined.MusicNote) }
         if ("newmusic" !in hidden) item { BrowseRow(stringResource(R.string.browse_new_music), onClick = onNewMusic, icon = Icons.Outlined.MusicNote) }
         if ("folders" !in hidden) item { BrowseRow(stringResource(R.string.browse_music_folder), onClick = onFolders, icon = MusicFolderIcon) }
         if ("favorites" !in hidden) item { BrowseRow(stringResource(R.string.browse_favorites), onClick = onFavorites, icon = FavoritesIcon) }
@@ -941,7 +973,12 @@ private fun FavoritesList(
     }
 
     val hasActions = folder.id.isNotBlank()
-    HintLazyColumn {
+    // At the top level the list remembers the last focused entry.
+    val memKey = if (!hasActions) "FAVORITES" else ""
+    val startIndex = remember(folder.id) { if (memKey.isEmpty()) 0 else (NavState.listFocus[memKey] ?: 0).coerceIn(0, (list.size - 1).coerceAtLeast(0)) }
+    val listState = rememberLazyListState()
+    LaunchedEffect(list) { if (startIndex > 0) listState.scrollToItem(startIndex) }
+    HintLazyColumn(state = listState) {
         if (hasActions) {
             item {
                 BrowseRow(stringResource(R.string.fav_play_all),
@@ -965,7 +1002,7 @@ private fun FavoritesList(
                     if (entry.isFolder) onFolder(BrowseItem(entry.id, entry.name))
                     else onItem(BrowseItem(entry.id, entry.name))
                 },
-                modifier = if (!hasActions && index == 0) Modifier.focusRequester(firstFocus) else Modifier
+                modifier = (if (!hasActions && index == startIndex) Modifier.focusRequester(firstFocus) else Modifier).trackFocus(memKey, index)
             )
         }
     }
@@ -1012,13 +1049,16 @@ private fun PlaylistList(onItem: (BrowseItem) -> Unit) {
     }
 
     val firstFocus = remember { FocusRequester() }
+    val startIndex = remember { (NavState.listFocus["PLAYLISTS"] ?: 0).coerceIn(0, list.size - 1) }
+    val listState = rememberLazyListState()
     LaunchedEffect(list) {
+        if (startIndex > 0) listState.scrollToItem(startIndex)
         try { firstFocus.requestFocus() } catch (_: Exception) { }
     }
-    HintLazyColumn {
+    HintLazyColumn(state = listState) {
         items(list.size) { index ->
             BrowseRow(list[index].name, onClick = { onItem(list[index]) },
-                modifier = if (index == 0) Modifier.focusRequester(firstFocus) else Modifier)
+                modifier = (if (index == startIndex) Modifier.focusRequester(firstFocus) else Modifier).trackFocus("PLAYLISTS", index))
         }
     }
 }
@@ -1457,6 +1497,7 @@ private fun LoadedList(
     listState: LazyListState,
     selectedIndex: Int,
     onSelect: (Int) -> Unit,
+    focusKey: String = "",
 ) {
     LaunchedEffect(items == null) {
         if (items == null) {
@@ -1484,7 +1525,7 @@ private fun LoadedList(
             BrowseRow(
                 text = items[index].name,
                 onClick = { onSelect(index) },
-                modifier = if (index == selectedIndex) Modifier.focusRequester(startFocus) else Modifier
+                modifier = (if (index == selectedIndex) Modifier.focusRequester(startFocus) else Modifier).trackFocus(focusKey, index)
             )
         }
     }
@@ -1530,7 +1571,12 @@ private fun FolderList(
     }
 
     val hasActions = folder.id.isNotBlank()
-    HintLazyColumn {
+    // At the top level the list remembers the last focused entry.
+    val memKey = if (!hasActions) "FOLDER" else ""
+    val startIndex = remember(folder.id) { if (memKey.isEmpty()) 0 else (NavState.listFocus[memKey] ?: 0).coerceIn(0, (list.size - 1).coerceAtLeast(0)) }
+    val listState = rememberLazyListState()
+    LaunchedEffect(list) { if (startIndex > 0) listState.scrollToItem(startIndex) }
+    HintLazyColumn(state = listState) {
         if (hasActions) {
             item {
                 // A folder that holds more folders (e.g. an artist) plays all
@@ -1558,7 +1604,7 @@ private fun FolderList(
                     if (entry.isFolder) onFolder(BrowseItem(entry.id, entry.name))
                     else onTrack(BrowseTrack(entry.id, entry.name, 0))
                 },
-                modifier = if (!hasActions && index == 0) Modifier.focusRequester(firstFocus) else Modifier
+                modifier = (if (!hasActions && index == startIndex) Modifier.focusRequester(firstFocus) else Modifier).trackFocus(memKey, index)
             )
         }
     }
@@ -1825,6 +1871,7 @@ private fun ArtistList(
     listState: LazyListState,
     selectedIndex: Int,
     onSelect: (Int) -> Unit,
+    focusKey: String = "",
 ) {
     LaunchedEffect(Unit) {
         if (artists == null) {
@@ -1875,7 +1922,7 @@ private fun ArtistList(
                 BrowseRow(
                     text = artists[index].name,
                     onClick = { onSelect(index) },
-                    modifier = if (index == selectedIndex) Modifier.focusRequester(startFocus) else Modifier
+                    modifier = (if (index == selectedIndex) Modifier.focusRequester(startFocus) else Modifier).trackFocus(focusKey, index)
                 )
             }
         }
@@ -1941,15 +1988,17 @@ private fun AlbumList(
     year: String = "",
     role: String = "",
     newest: Boolean = false,
+    all: Boolean = false,
     albums: List<BrowseItem>?,
     onLoaded: (List<BrowseItem>) -> Unit,
     listState: LazyListState,
     selectedIndex: Int,
     onSelect: (Int) -> Unit,
+    focusKey: String = "",
 ) {
-    LaunchedEffect(artistId, year, newest, albums == null) {
+    LaunchedEffect(artistId, year, newest, all, albums == null) {
         if (albums == null) {
-            onLoaded(withContext(Dispatchers.IO) { if (newest) LMS.getNewAlbums() else if (year.isNotEmpty()) LMS.getAlbumsByYear(year) else LMS.getAlbums(artistId, role = role) })
+            onLoaded(withContext(Dispatchers.IO) { if (newest) LMS.getNewAlbums() else if (all) LMS.getReleases() else if (year.isNotEmpty()) LMS.getAlbumsByYear(year) else LMS.getAlbums(artistId, role = role) })
         }
     }
 
@@ -1970,7 +2019,7 @@ private fun AlbumList(
     }
 
     val imageLoader = rememberLmsImageLoader()
-    HintLazyColumn(state = listState) {
+    val rows: LazyListScope.() -> Unit = {
         items(albums.size) { index ->
             ThumbRow(
                 text = albums[index].name,
@@ -1980,9 +2029,41 @@ private fun AlbumList(
                 round = false,
                 imageLoader = imageLoader,
                 onClick = { onSelect(index) },
-                modifier = if (index == selectedIndex) Modifier.focusRequester(startFocus) else Modifier
+                modifier = (if (index == selectedIndex) Modifier.focusRequester(startFocus) else Modifier)
+                    .trackFocus(focusKey, index)
             )
         }
+    }
+
+    if (!all) {
+        HintLazyColumn(state = listState, content = rows)
+        return
+    }
+    // Releases: A-Z strip on the artist's first letter (the list is sorted by artist).
+    val letters = remember { listOf("#") + ('A'..'Z').map { it.toString() } }
+    val letterStart = remember(albums) {
+        val first = mutableMapOf<String, Int>()
+        albums.forEachIndexed { i, a ->
+            val c = a.subtitle.trim().replace(ignoredArticles, "").firstOrNull()?.uppercaseChar()
+            val key = if (c != null && c in 'A'..'Z') c.toString() else "#"
+            if (key !in first) first[key] = i
+        }
+        letters.indices.map { li ->
+            (li until letters.size).firstNotNullOfOrNull { first[letters[it]] } ?: (albums.size - 1)
+        }
+    }
+    var stripIndex by remember { mutableIntStateOf(0) }
+    val scope = rememberCoroutineScope()
+    Row {
+        HintLazyColumn(state = listState, modifier = Modifier.weight(1f), content = rows)
+        AlphabetStrip(
+            letters = letters,
+            selected = stripIndex,
+            onMove = { newIndex ->
+                stripIndex = newIndex
+                scope.launch { listState.scrollToItem(letterStart[newIndex]) }
+            },
+        )
     }
 }
 

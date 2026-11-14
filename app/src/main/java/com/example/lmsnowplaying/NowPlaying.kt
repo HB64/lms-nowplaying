@@ -469,7 +469,7 @@ fun PlayerScreen(){
                         textAlign = TextAlign.Center,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .basicMarquee()
+                            .basicMarquee(iterations = Int.MAX_VALUE)
                     )
                     Spacer(modifier = Modifier.size(10.dp))
 
@@ -486,7 +486,7 @@ fun PlayerScreen(){
                         textAlign = TextAlign.Center,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .basicMarquee()
+                            .basicMarquee(iterations = Int.MAX_VALUE)
                     )
 
                     if (albumName.isNotBlank()) {
@@ -502,7 +502,7 @@ fun PlayerScreen(){
                             textAlign = TextAlign.Center,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .basicMarquee()
+                                .basicMarquee(iterations = Int.MAX_VALUE)
                         )
                     }
                     if (nextTitle.isNotBlank()) {
@@ -530,7 +530,7 @@ fun PlayerScreen(){
                                     color = Color.White,
                                     fontSize = 14.sp,
                                     maxLines = 1,
-                                    modifier = Modifier.basicMarquee()
+                                    modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
                                 )
                             }
                             if (canReplace) {

@@ -1626,6 +1626,17 @@ object LMS{
         }
     }
 
+    // All albums, alphabetical by artist and then album title (like Material's Releases).
+    suspend fun getReleases(count: Int = 10000): List<BrowseItem> {
+        return safeCall("getReleases", emptyList()) {
+            val loop = rpcLoop(listOf("albums", 0, count, "sort:artistalbum", "tags:lja"), "albums_loop")
+            (0 until loop.length()).map {
+                val o = loop.getJSONObject(it)
+                BrowseItem(o.optString("id"), o.optString("album"), o.optString("artwork_track_id"), o.optString("artist"))
+            }
+        }
+    }
+
     // Newest albums first (Lyrion sort:new), with the artist as second line.
     suspend fun getNewAlbums(count: Int = 200): List<BrowseItem> {
         return safeCall("getNewAlbums", emptyList()) {
