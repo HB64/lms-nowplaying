@@ -45,6 +45,13 @@
     <string name="browse_album_artists">Album artists</string>
     <string name="browse_composers">Composers</string>
     <string name="browse_releases">Releases</string>
+    <string name="sort_by">Sort by</string>
+    <string name="sort_release">Release</string>
+    <string name="sort_artist_release">Artist, Release</string>
+    <string name="sort_artist_year_release">Artist, Year, Release</string>
+    <string name="sort_year_release">Year, Release</string>
+    <string name="sort_year_artist_release">Year, Artist, Release</string>
+    <string name="sort_descending">Descending</string>
     <string name="browse_years">Years</string>
     <string name="browse_artists">Artists</string>
     <string name="browse_albums">Albums</string>

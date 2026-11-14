@@ -55,6 +55,10 @@ object NavState {
     // opens on that row again after the panel was closed.
     val listFocus = HashMap<String, Int>()
 
+    // Sort of the Releases list (Lyrion sort name) and whether it is reversed (kept while the app runs).
+    var releasesSort = "artistalbum"
+    var releasesDesc = false
+
     // True while the Queue panel (button at the bottom right) is showing.
     var showQueue by mutableStateOf(false)
 

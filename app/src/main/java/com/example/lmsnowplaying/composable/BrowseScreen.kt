@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material3.Icon
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -109,7 +110,7 @@ import kotlinx.coroutines.withContext
 private enum class BrowseLevel {
     ROOT, ARTISTS, ALBUMS, TRACKS, TRACK_ACTIONS, SEARCH, GENRES, GENRE_ARTISTS, FOLDER, MIX,
     FAVORITES, FAVORITE_ACTIONS, PLAYLISTS, PLAYLIST_ACTIONS, PLAYLIST_TRACKS, RADIO, RADIO_ACTIONS, RADIO_SEARCH, MY_MUSIC,
-    NEW_MUSIC, ALBUM_ARTISTS, COMPOSERS, YEARS, YEAR_ALBUMS, RELEASES
+    NEW_MUSIC, ALBUM_ARTISTS, COMPOSERS, YEARS, YEAR_ALBUMS, RELEASES, RELEASES_SORT
 }
 
 // The part of the panel a level belongs to, and the way back up to it from the
@@ -118,6 +119,7 @@ private fun browseSection(level: BrowseLevel): String = when (level) {
     BrowseLevel.ARTISTS, BrowseLevel.ALBUMS, BrowseLevel.TRACKS, BrowseLevel.TRACK_ACTIONS -> "ARTISTS"
     BrowseLevel.GENRES, BrowseLevel.GENRE_ARTISTS -> "GENRES"
     BrowseLevel.YEARS, BrowseLevel.YEAR_ALBUMS -> "YEARS"
+    BrowseLevel.RELEASES, BrowseLevel.RELEASES_SORT -> "RELEASES"
     BrowseLevel.FAVORITES, BrowseLevel.FAVORITE_ACTIONS -> "FAVORITES"
     BrowseLevel.PLAYLISTS, BrowseLevel.PLAYLIST_ACTIONS, BrowseLevel.PLAYLIST_TRACKS -> "PLAYLISTS"
     BrowseLevel.RADIO, BrowseLevel.RADIO_ACTIONS, BrowseLevel.RADIO_SEARCH -> "RADIO"
@@ -130,6 +132,12 @@ private fun restoreBrowse(section: String): Pair<BrowseLevel, List<BrowseLevel>>
         BrowseLevel.valueOf(section) to listOf(BrowseLevel.ROOT, BrowseLevel.MY_MUSIC)
     "RADIO", "MIX" -> BrowseLevel.valueOf(section) to listOf(BrowseLevel.ROOT)
     else -> BrowseLevel.ROOT to emptyList()
+}
+
+// Decade a release year belongs to as its first year ("1960"); "?" = no year.
+private fun decadeKey(year: String): String {
+    val y = year.toIntOrNull() ?: 0
+    return if (y <= 0) "?" else (y / 10 * 10).toString()
 }
 
 // Remembers which row of a list was focused last (see NavState.listFocus).
@@ -353,6 +361,7 @@ fun BrowseScreen() {
                     BrowseLevel.PLAYLISTS -> stringResource(R.string.browse_playlists)
                     BrowseLevel.NEW_MUSIC -> stringResource(R.string.browse_new_music)
                     BrowseLevel.RELEASES -> stringResource(R.string.browse_releases)
+                    BrowseLevel.RELEASES_SORT -> stringResource(R.string.sort_by)
                     BrowseLevel.RADIO -> radioPath.lastOrNull()?.name ?: stringResource(R.string.browse_radio)
                     BrowseLevel.RADIO_ACTIONS -> actionRadio?.name ?: stringResource(R.string.browse_radio)
                     BrowseLevel.RADIO_SEARCH -> radioSearch.name
@@ -365,6 +374,20 @@ fun BrowseScreen() {
                 maxLines = 1,
                 modifier = Modifier.padding(start = 12.dp, bottom = 8.dp)
             )
+            if (level == BrowseLevel.RELEASES) {
+                FocusIconButton(
+                    onClick = { go(BrowseLevel.RELEASES_SORT) },
+                    size = 28.dp,
+                    modifier = Modifier.padding(start = 6.dp, bottom = 8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Menu,
+                        contentDescription = stringResource(R.string.sort_by),
+                        tint = Color.White.copy(alpha = 0.8f),
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
             if (level == BrowseLevel.MIX) {
                 FocusIconButton(
                     onClick = { showMixInfo = !showMixInfo },
@@ -439,6 +462,8 @@ fun BrowseScreen() {
                 BrowseLevel.RELEASES -> AlbumList(
                     artistId = "",
                     all = true,
+                    sort = NavState.releasesSort,
+                    descending = NavState.releasesDesc,
                     albums = releases,
                     onLoaded = { releases = it },
                     listState = releasesListState,
@@ -448,6 +473,15 @@ fun BrowseScreen() {
                         selectedReleaseIndex = index
                         releases?.getOrNull(index)?.let { chooseAlbum(it) }
                     }
+                )
+                BrowseLevel.RELEASES_SORT -> ReleasesSortList(
+                    onChanged = {
+                        // A new order means a new list, starting at the top
+                        releases = null
+                        selectedReleaseIndex = 0
+                        NavState.listFocus["RELEASES"] = 0
+                    },
+                    onDone = goBack,
                 )
                 BrowseLevel.NEW_MUSIC -> AlbumList(
                     artistId = "",
@@ -1941,7 +1975,14 @@ private fun ArtistList(
 // skin. D-pad right from the list enters it, up/down jumps through the
 // letters (the list scrolls along), left/OK goes back to the list.
 @Composable
-private fun AlphabetStrip(letters: List<String>, selected: Int, onMove: (Int) -> Unit) {
+private fun AlphabetStrip(
+    letters: List<String>,
+    selected: Int,
+    onMove: (Int) -> Unit,
+    // Optional: handle OK / left first; return true when it was handled here.
+    onOk: (() -> Boolean)? = null,
+    onLeft: (() -> Boolean)? = null,
+) {
     val interactionSource = remember { MutableInteractionSource() }
     val focused by interactionSource.collectIsFocusedAsState()
     val focusManager = LocalFocusManager.current
@@ -1954,8 +1995,13 @@ private fun AlphabetStrip(letters: List<String>, selected: Int, onMove: (Int) ->
                 when (event.key) {
                     Key.DirectionUp -> { onMove((selected - 1).coerceAtLeast(0)); true }
                     Key.DirectionDown -> { onMove((selected + 1).coerceAtMost(letters.size - 1)); true }
-                    Key.DirectionLeft, Key.DirectionCenter, Key.Enter -> {
-                        focusManager.moveFocus(FocusDirection.Left); true
+                    Key.DirectionLeft -> {
+                        if (onLeft?.invoke() != true) focusManager.moveFocus(FocusDirection.Left)
+                        true
+                    }
+                    Key.DirectionCenter, Key.Enter -> {
+                        if (onOk?.invoke() != true) focusManager.moveFocus(FocusDirection.Left)
+                        true
                     }
                     else -> false
                 }
@@ -1963,17 +2009,20 @@ private fun AlphabetStrip(letters: List<String>, selected: Int, onMove: (Int) ->
             .focusable(interactionSource = interactionSource),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        // A short strip (decades, years) gets roomy rows so the digits are not cut off;
+        // the 27-letter A-Z strip has to stay compact to fit the panel.
+        val roomy = letters.size <= 14
         letters.forEachIndexed { i, letter ->
             val isSelected = focused && i == selected
             Text(
                 text = letter,
-                fontSize = 11.sp,
-                lineHeight = 11.sp,
+                fontSize = if (roomy) 13.sp else 11.sp,
+                lineHeight = if (roomy) 20.sp else 11.sp,
                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                 color = if (isSelected) Color.Black else Color.White.copy(alpha = if (focused) 0.9f else 0.55f),
                 modifier = Modifier
-                    .width(18.dp)
-                    .height(11.5.dp)
+                    .width(if (roomy) 28.dp else 18.dp)
+                    .height(if (roomy) 20.dp else 11.5.dp)
                     .clip(RoundedCornerShape(3.dp))
                     .background(if (isSelected) Color.White else Color.Transparent),
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -1989,6 +2038,8 @@ private fun AlbumList(
     role: String = "",
     newest: Boolean = false,
     all: Boolean = false,
+    sort: String = "artistalbum",
+    descending: Boolean = false,
     albums: List<BrowseItem>?,
     onLoaded: (List<BrowseItem>) -> Unit,
     listState: LazyListState,
@@ -1998,7 +2049,7 @@ private fun AlbumList(
 ) {
     LaunchedEffect(artistId, year, newest, all, albums == null) {
         if (albums == null) {
-            onLoaded(withContext(Dispatchers.IO) { if (newest) LMS.getNewAlbums() else if (all) LMS.getReleases() else if (year.isNotEmpty()) LMS.getAlbumsByYear(year) else LMS.getAlbums(artistId, role = role) })
+            onLoaded(withContext(Dispatchers.IO) { if (newest) LMS.getNewAlbums() else if (all) LMS.getReleases(sort).let { if (descending) it.asReversed() else it } else if (year.isNotEmpty()) LMS.getAlbumsByYear(year) else LMS.getAlbums(artistId, role = role) })
         }
     }
 
@@ -2035,16 +2086,43 @@ private fun AlbumList(
         }
     }
 
-    if (!all) {
+    // Releases: strip on what the list is sorted by (first letter of artist or album title,
+    // or the decade); in list order, so a reversed list gets a reversed strip.
+    val stripBy: ((BrowseItem) -> String)? = when {
+        !all -> null
+        sort == "artistalbum" || sort == "artflow" -> ({ a: BrowseItem -> a.subtitle })
+        sort == "album" -> ({ a: BrowseItem -> a.name })
+        sort == "yearalbum" || sort == "yearartistalbum" -> ({ a: BrowseItem -> a.year })
+        else -> null
+    }
+    if (stripBy == null) {
         HintLazyColumn(state = listState, content = rows)
         return
     }
-    // Releases: A-Z strip on the artist's first letter (the list is sorted by artist).
-    val letters = remember { listOf("#") + ('A'..'Z').map { it.toString() } }
-    val letterStart = remember(albums) {
+    val yearMode = sort == "yearalbum" || sort == "yearartistalbum"
+    // Year orders: one entry per decade present, in list order ('60, '70, ...; ? = no year).
+    val decades = remember(albums, sort, descending) {
+        val m = LinkedHashMap<String, Int>()
+        if (yearMode) albums.forEachIndexed { i, a ->
+            val key = decadeKey(a.year)
+            if (key !in m) m[key] = i
+        }
+        m
+    }
+    // Decades show as '60, '70 ... without the century, like Lyrion; 1900 and 2000 are still
+    // two separate entries (both '00) at their own place in the list.
+    val decadeLabels = remember(decades) {
+        decades.keys.map { if (it == "?") it else "'" + it.takeLast(2) }
+    }
+    val letters = remember(albums, sort, descending) {
+        if (yearMode) decadeLabels
+        else (listOf("#") + ('A'..'Z').map { it.toString() }).let { if (descending) it.reversed() else it }
+    }
+    val letterStart = remember(albums, sort, descending) {
+        if (yearMode) return@remember decades.values.toList()
         val first = mutableMapOf<String, Int>()
         albums.forEachIndexed { i, a ->
-            val c = a.subtitle.trim().replace(ignoredArticles, "").firstOrNull()?.uppercaseChar()
+            val c = stripBy(a).trim().replace(ignoredArticles, "").firstOrNull()?.uppercaseChar()
             val key = if (c != null && c in 'A'..'Z') c.toString() else "#"
             if (key !in first) first[key] = i
         }
@@ -2052,18 +2130,89 @@ private fun AlbumList(
             (li until letters.size).firstNotNullOfOrNull { first[letters[it]] } ?: (albums.size - 1)
         }
     }
-    var stripIndex by remember { mutableIntStateOf(0) }
+    // OK on a decade opens the single years of that decade in the strip.
+    var openDecade by remember(albums, sort, descending) { mutableStateOf<String?>(null) }
+    val yearsOfDecade = remember(albums, sort, descending, openDecade) {
+        val m = LinkedHashMap<String, Int>()
+        val d = openDecade
+        if (yearMode && d != null) albums.forEachIndexed { i, a ->
+            if (decadeKey(a.year) == d) {
+                val label = "'" + ((a.year.toIntOrNull() ?: 0) % 100).toString().padStart(2, '0')
+                if (label !in m) m[label] = i
+            }
+        }
+        m
+    }
+    val labels = if (openDecade != null) yearsOfDecade.keys.toList() else letters
+    val starts = if (openDecade != null) yearsOfDecade.values.toList() else letterStart
+    var stripIndex by remember(albums, sort, descending, openDecade) { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
     Row {
         HintLazyColumn(state = listState, modifier = Modifier.weight(1f), content = rows)
         AlphabetStrip(
-            letters = letters,
+            letters = labels,
             selected = stripIndex,
             onMove = { newIndex ->
                 stripIndex = newIndex
-                scope.launch { listState.scrollToItem(letterStart[newIndex]) }
+                scope.launch { listState.scrollToItem(starts[newIndex]) }
+            },
+            onOk = {
+                when {
+                    !yearMode -> false
+                    openDecade != null -> { openDecade = null; false }
+                    decades.keys.toList().getOrNull(stripIndex).let { it == null || it == "?" } -> false
+                    else -> { openDecade = decades.keys.toList()[stripIndex]; true }
+                }
+            },
+            onLeft = {
+                if (openDecade != null) { openDecade = null; true } else false
             },
         )
+    }
+}
+
+// Sort choices of the Releases list: one order (radio) plus a reverse switch (checkbox),
+// like Material's "Sort by" dialog. A new order closes the dialog; Descending stays open.
+@Composable
+private fun ReleasesSortList(onChanged: () -> Unit, onDone: () -> Unit) {
+    val options = listOf(
+        "album" to stringResource(R.string.sort_release),
+        "artistalbum" to stringResource(R.string.sort_artist_release),
+        "artflow" to stringResource(R.string.sort_artist_year_release),
+        "yearalbum" to stringResource(R.string.sort_year_release),
+        "yearartistalbum" to stringResource(R.string.sort_year_artist_release),
+    )
+    var current by remember { mutableStateOf(NavState.releasesSort) }
+    var desc by remember { mutableStateOf(NavState.releasesDesc) }
+    val firstFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { try { firstFocus.requestFocus() } catch (_: Exception) { } }
+    HintLazyColumn {
+        items(options.size) { i ->
+            val (key, label) = options[i]
+            BrowseRow(
+                text = label,
+                trailing = if (key == current) "\u25C9" else "\u25CB",
+                modifier = if (key == current) Modifier.focusRequester(firstFocus) else Modifier,
+                onClick = {
+                    if (key != current) {
+                        NavState.releasesSort = key
+                        onChanged()
+                    }
+                    onDone()
+                },
+            )
+        }
+        item {
+            BrowseRow(
+                text = stringResource(R.string.sort_descending),
+                trailing = if (desc) "\u2611" else "\u2610",
+                onClick = {
+                    desc = !desc
+                    NavState.releasesDesc = desc
+                    onChanged()
+                },
+            )
+        }
     }
 }
 

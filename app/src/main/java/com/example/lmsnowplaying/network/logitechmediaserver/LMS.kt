@@ -37,6 +37,8 @@ data class BrowseItem(
     val artworkId: String = "",
     // Second line in search results (artist); empty when unknown.
     val subtitle: String = "",
+    // For albums: release year; empty when unknown.
+    val year: String = "",
 )
 
 // Repeat / shuffle / Don't Stop The Music state of a player.
@@ -1626,13 +1628,13 @@ object LMS{
         }
     }
 
-    // All albums, alphabetical by artist and then album title (like Material's Releases).
-    suspend fun getReleases(count: Int = 10000): List<BrowseItem> {
+    // All albums in the given Lyrion sort order (like Material's Releases).
+    suspend fun getReleases(sort: String = "artistalbum", count: Int = 10000): List<BrowseItem> {
         return safeCall("getReleases", emptyList()) {
-            val loop = rpcLoop(listOf("albums", 0, count, "sort:artistalbum", "tags:lja"), "albums_loop")
+            val loop = rpcLoop(listOf("albums", 0, count, "sort:$sort", "tags:ljay"), "albums_loop")
             (0 until loop.length()).map {
                 val o = loop.getJSONObject(it)
-                BrowseItem(o.optString("id"), o.optString("album"), o.optString("artwork_track_id"), o.optString("artist"))
+                BrowseItem(o.optString("id"), o.optString("album"), o.optString("artwork_track_id"), o.optString("artist"), o.optString("year"))
             }
         }
     }
