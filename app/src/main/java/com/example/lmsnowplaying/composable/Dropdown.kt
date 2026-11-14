@@ -211,51 +211,33 @@ fun MyUI() {
             // "Only control default": no player list, only the other rows.
             val onlyDefault = AppConfig.current.onlyControlDefault && AppConfig.current.defaultPlayerMac.isNotBlank()
             val listCount = if (onlyDefault) 0 else data.size
-            // "Synchronize…" row: needs a selected player and at least one other player.
-            val currentMac = LMS.playerMac
-            val syncCandidates = data.filter { it.second != currentMac }
-            val hasSync = currentMac != "00:00:00:00:00:00" && syncCandidates.isNotEmpty()
 
-            // Start on the player that is currently selected
+            // Top level: "Players…" (opens the player list), Standby, local player
+            // (if any), Settings. The long player list is only shown after OK on the
+            // first row, so it never sits between the other rows.
+            val hasPlayersRow = listCount > 0
+            val rowOffset = if (hasPlayersRow) 1 else 0
+            var playersMode by remember { mutableStateOf(false) }
+            var playerIndex by remember { mutableStateOf(0) }
             var highlightedIndex by remember {
-                mutableStateOf(
-                    if (returningFromSettings) listCount + 1 + (if (hasLocal) 1 else 0) + (if (hasSync) 1 else 0)
-                    else if (onlyDefault) 0 else data.indexOfFirst { it.second == LMS.playerMac }.coerceAtLeast(0)
-                )
+                mutableStateOf(if (returningFromSettings) rowOffset + 1 + (if (hasLocal) 1 else 0) else 0)
             }
             var menuHasFocus by remember { mutableStateOf(false) }
-            // +1 for the standby-on-exit row, +1 for the local player row
-            // (if any), +1 for the "Settings" entry.
-            val totalItems = listCount + 2 + (if (hasLocal) 1 else 0) + (if (hasSync) 1 else 0)
-            val standbyRowIndex = listCount
-            val localRowIndex = if (hasLocal) listCount + 1 else -1
-            val syncRowIndex = if (hasSync) listCount + 1 + (if (hasLocal) 1 else 0) else -1
+            val totalItems = rowOffset + 2 + (if (hasLocal) 1 else 0)
+            val playersRowIndex = if (hasPlayersRow) 0 else -1
+            val standbyRowIndex = rowOffset
+            val localRowIndex = if (hasLocal) rowOffset + 1 else -1
             val settingsRowIndex = totalItems - 1
             val menuFocusRequester = remember { FocusRequester() }
-            // The player list scrolls inside a limited height, so the rows below
-            // it (Standby, Settings) always stay reachable with many players.
+            // The player list scrolls inside a limited height.
             val playerListState = rememberLazyListState()
-            LaunchedEffect(highlightedIndex) {
-                if (highlightedIndex in 0 until listCount) {
+            LaunchedEffect(playerIndex, playersMode) {
+                if (playersMode && playerIndex in 0 until listCount) {
                     val info = playerListState.layoutInfo
                     val first = playerListState.firstVisibleItemIndex
                     val visible = info.visibleItemsInfo.size.coerceAtLeast(1)
-                    if (highlightedIndex < first) playerListState.scrollToItem(highlightedIndex)
-                    else if (highlightedIndex > first + visible - 1) playerListState.scrollToItem(highlightedIndex - visible + 1)
-                }
-            }
-
-            // Sync list: the other players with a checkbox (☑ = in sync with the selected player).
-            var syncMode by remember { mutableStateOf(false) }
-            var syncIndex by remember { mutableStateOf(0) }
-            val syncListState = rememberLazyListState()
-            LaunchedEffect(syncIndex, syncMode) {
-                if (syncMode) {
-                    val info = syncListState.layoutInfo
-                    val first = syncListState.firstVisibleItemIndex
-                    val visible = info.visibleItemsInfo.size.coerceAtLeast(1)
-                    if (syncIndex < first) syncListState.scrollToItem(syncIndex)
-                    else if (syncIndex > first + visible - 1) syncListState.scrollToItem(syncIndex - visible + 1)
+                    if (playerIndex < first) playerListState.scrollToItem(playerIndex)
+                    else if (playerIndex > first + visible - 1) playerListState.scrollToItem(playerIndex - visible + 1)
                 }
             }
 
@@ -308,22 +290,21 @@ fun MyUI() {
                     .onKeyEvent { event ->
                         if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
                         lastMenuKey = System.currentTimeMillis()
-                        if (syncMode) {
-                            val n = syncCandidates.size
-                            if (n == 0) { syncMode = false; return@onKeyEvent true }
+                        if (playersMode) {
+                            val n = data.size
+                            if (n == 0) { playersMode = false; return@onKeyEvent true }
                             when (event.key) {
-                                Key.DirectionDown -> syncIndex = (syncIndex + 1) % n
-                                Key.DirectionUp -> syncIndex = (syncIndex - 1 + n) % n
+                                Key.DirectionDown -> playerIndex = (playerIndex + 1) % n
+                                Key.DirectionUp -> playerIndex = (playerIndex - 1 + n) % n
                                 Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
-                                    val other = syncCandidates.getOrNull(syncIndex)
-                                    if (other != null) {
-                                        CoroutineScope(Dispatchers.IO).launch {
-                                            LMS.toggleSync(currentMac, other.second)
-                                            LMS.getPlayers()
-                                        }
+                                    val itemValue = data.getOrNull(playerIndex)
+                                    if (itemValue != null) {
+                                        Toast.makeText(contextForToast, " Connected to: ${itemValue.first}", Toast.LENGTH_SHORT).show()
+                                        LMS.setPlayer(itemValue.first, itemValue.second)
+                                        expanded = false
                                     }
                                 }
-                                Key.Back, Key.DirectionLeft -> syncMode = false
+                                Key.Back, Key.DirectionLeft, Key.DirectionRight -> playersMode = false
                                 else -> {}
                             }
                             return@onKeyEvent true
@@ -338,11 +319,9 @@ fun MyUI() {
                                 true
                             }
                             Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
-                                if (highlightedIndex < listCount) {
-                                    val itemValue = data[highlightedIndex]
-                                    Toast.makeText(contextForToast, " Connected to: ${itemValue.first}", Toast.LENGTH_SHORT).show()
-                                    LMS.setPlayer(itemValue.first, itemValue.second)
-                                    expanded = false
+                                if (highlightedIndex == playersRowIndex) {
+                                    playerIndex = data.indexOfFirst { it.second == LMS.playerMac }.coerceAtLeast(0)
+                                    playersMode = true
                                 } else if (highlightedIndex == standbyRowIndex) {
                                     val newValue = !standbyOnExit
                                     standbyOnExit = newValue
@@ -357,9 +336,6 @@ fun MyUI() {
                                     // (dis)connects (the list refreshes every 2 s meanwhile).
                                     if (localRunning) LocalPlayer.stop(contextForToast, localApp)
                                     else LocalPlayer.start(contextForToast, localApp)
-                                } else if (highlightedIndex == syncRowIndex) {
-                                    syncIndex = 0
-                                    syncMode = true
                                 } else {
                                     NavState.reopenMenu = true
                                     NavState.showSettings = true
@@ -375,73 +351,12 @@ fun MyUI() {
                         }
                     }
             ) {
-                if (syncMode) {
-                    Text(
-                        text = "${stringResource(R.string.menu_sync_with)} ${LMS.playerName}" +
-                            if (syncCandidates.size > PLAYER_ROWS_VISIBLE) " (${syncIndex + 1}/${syncCandidates.size})" else "",
-                        color = Color.White.copy(alpha = 0.6f),
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                    )
-                    LazyColumn(
-                        state = syncListState,
-                        modifier = Modifier
-                            .heightIn(max = PLAYER_ROW_HEIGHT * PLAYER_ROWS_VISIBLE)
-                            // Same scrollbar as the player list, so it is clear this list scrolls
-                            .drawWithContent {
-                                drawContent()
-                                val info = syncListState.layoutInfo
-                                val total = info.totalItemsCount
-                                val shown = info.visibleItemsInfo.size
-                                if (total > shown && shown > 0) {
-                                    val thumbH = size.height * shown / total
-                                    val thumbTop = size.height * syncListState.firstVisibleItemIndex / total
-                                    drawRoundRect(
-                                        color = Color.White.copy(alpha = 0.85f),
-                                        topLeft = Offset(size.width - 6.dp.toPx(), thumbTop),
-                                        size = Size(4.dp.toPx(), thumbH),
-                                        cornerRadius = CornerRadius(2.dp.toPx())
-                                    )
-                                }
-                            }
-                    ) {
-                        itemsIndexed(syncCandidates) { i, p ->
-                            val models = LMS.playerModels[p.second]
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(PLAYER_ROW_HEIGHT)
-                                    .background(if (syncIndex == i) Color.White.copy(alpha = 0.3f) else Color.Transparent)
-                                    .padding(horizontal = 16.dp)
-                            ) {
-                                Icon(
-                                    imageVector = playerIcon(models?.first ?: "", models?.second ?: ""),
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Text(
-                                    text = p.first,
-                                    color = Color.White,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f).padding(horizontal = 10.dp)
-                                )
-                                Text(if (LMS.inSameSyncGroup(currentMac, p.second)) "\u2611" else "\u2610", color = Color.White)
-                            }
-                        }
-                    }
-                    if (syncCandidates.size > PLAYER_ROWS_VISIBLE) {
-                        Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.3f)))
-                    }
-                    return@Column
-                }
+                if (playersMode) {
                 // Only when the list scrolls: a header showing where you are in it,
                 // and a line below it, so it is clear the list scrolls on its own.
                 val listScrolls = listCount > PLAYER_ROWS_VISIBLE
                 if (listScrolls) {
-                    val position = if (highlightedIndex in 0 until listCount) "${highlightedIndex + 1}/$listCount" else "$listCount"
+                    val position = if (playerIndex in 0 until listCount) "${playerIndex + 1}/$listCount" else "$listCount"
                     Text(
                         text = "${stringResource(R.string.menu_players_header)} ($position)",
                         color = Color.White.copy(alpha = 0.6f),
@@ -479,7 +394,7 @@ fun MyUI() {
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(PLAYER_ROW_HEIGHT)
-                                .background(if (highlightedIndex == itemIndex) Color.White.copy(alpha = 0.3f) else Color.Transparent)
+                                .background(if (playerIndex == itemIndex) Color.White.copy(alpha = 0.3f) else Color.Transparent)
                                 .padding(horizontal = 16.dp)
                         ) {
                             Icon(
@@ -513,6 +428,18 @@ fun MyUI() {
                 if (listScrolls) {
                     Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.3f)))
                 }
+                return@Column
+                }
+
+                if (hasPlayersRow) {
+                    val currentModel = LMS.playerModels[LMS.playerMac]
+                    MenuRow(
+                        text = stringResource(R.string.menu_players_header) +
+                            if (LMS.playerName.isNotBlank()) ": ${LMS.playerName}" else "",
+                        icon = playerIcon(currentModel?.first ?: "", currentModel?.second ?: ""),
+                        highlighted = highlightedIndex == playersRowIndex
+                    )
+                }
 
                 val standbyLabel = if (standbyOnExit)
                     stringResource(R.string.menu_standby_on)
@@ -531,14 +458,6 @@ fun MyUI() {
                         ),
                         icon = null,
                         highlighted = highlightedIndex == localRowIndex
-                    )
-                }
-
-                if (hasSync) {
-                    MenuRow(
-                        text = stringResource(R.string.menu_sync),
-                        icon = Icons.Outlined.Link,
-                        highlighted = highlightedIndex == syncRowIndex
                     )
                 }
 
@@ -567,6 +486,9 @@ private fun MenuRow(text: String, icon: androidx.compose.ui.graphics.vector.Imag
         } else {
             Box(Modifier.size(18.dp))
         }
-        Text(text = text, color = Color.White, modifier = Modifier.padding(start = 10.dp))
+        Text(
+            text = text, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(start = 10.dp)
+        )
     }
 }

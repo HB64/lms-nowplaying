@@ -39,6 +39,7 @@ object SettingsRepository {
     private val LOCAL_PLAYER_AUTOSTART = booleanPreferencesKey("local_player_autostart")
     private val SHOW_VOLUME_SLIDER = booleanPreferencesKey("show_volume_slider")
     private val SHOW_TRACK_INFO_BUTTON = booleanPreferencesKey("show_track_info_button")
+    private val SHOW_TRACK_INFO_LINE = booleanPreferencesKey("show_track_info_line")
     private val ONLY_CONTROL_DEFAULT = booleanPreferencesKey("only_control_default")
     private val HIDDEN_PLAYERS = stringSetPreferencesKey("hidden_players")
     private val HIDDEN_MY_MUSIC = stringSetPreferencesKey("hidden_my_music")
@@ -106,6 +107,8 @@ object SettingsRepository {
         val showVolumeSlider: Boolean = true,
         // The ⓘ button next to the title (technical info of the track); off by default.
         val showTrackInfoButton: Boolean = false,
+        // One line with the main technical data under the album line; off by default.
+        val showTrackInfoLine: Boolean = false,
         val onlyControlDefault: Boolean = false,
         // MAC addresses of players hidden from the ⋮ menu list.
         val hiddenPlayers: Set<String> = emptySet(),
@@ -139,6 +142,7 @@ object SettingsRepository {
                 localPlayerStopOnExit = prefs[LOCAL_PLAYER_STOP_ON_EXIT] ?: false,
                 showVolumeSlider = prefs[SHOW_VOLUME_SLIDER] ?: true,
                 showTrackInfoButton = prefs[SHOW_TRACK_INFO_BUTTON] ?: false,
+                showTrackInfoLine = prefs[SHOW_TRACK_INFO_LINE] ?: false,
                 onlyControlDefault = prefs[ONLY_CONTROL_DEFAULT] ?: false,
                 hiddenPlayers = prefs[HIDDEN_PLAYERS] ?: emptySet(),
                 hiddenMyMusic = prefs[HIDDEN_MY_MUSIC] ?: DEFAULT_HIDDEN_MY_MUSIC,
@@ -170,6 +174,7 @@ object SettingsRepository {
             prefs[LOCAL_PLAYER_STOP_ON_EXIT] = settings.localPlayerStopOnExit
             prefs[SHOW_VOLUME_SLIDER] = settings.showVolumeSlider
             prefs[SHOW_TRACK_INFO_BUTTON] = settings.showTrackInfoButton
+            prefs[SHOW_TRACK_INFO_LINE] = settings.showTrackInfoLine
             prefs[ONLY_CONTROL_DEFAULT] = settings.onlyControlDefault
             prefs[HIDDEN_PLAYERS] = settings.hiddenPlayers
             prefs[HIDDEN_MY_MUSIC] = settings.hiddenMyMusic

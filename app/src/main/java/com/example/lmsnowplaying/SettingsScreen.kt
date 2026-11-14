@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Link
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -140,6 +142,7 @@ fun SettingsScreen(
     var localPlayerStopOnExit by remember { mutableStateOf(initial.localPlayerStopOnExit) }
     var showVolumeSlider by remember { mutableStateOf(initial.showVolumeSlider) }
     var showTrackInfoButton by remember { mutableStateOf(initial.showTrackInfoButton) }
+    var showTrackInfoLine by remember { mutableStateOf(initial.showTrackInfoLine) }
     var localPlayerDeviceVolume by remember { mutableStateOf(initial.localPlayerDeviceVolume) }
     var localPlayerFixedVolume by remember { mutableStateOf(initial.localPlayerFixedVolume) }
     // Is this device's Squeezelite connected to Lyrion right now?
@@ -151,6 +154,11 @@ fun SettingsScreen(
     var hiddenMyMusic by remember { mutableStateOf(initial.hiddenMyMusic) }
     // Connected players, captured when the Default player list is opened.
     var defPlayers by remember { mutableStateOf(listOf<Pair<String, String>>()) }
+    // Sync (for the selected player): the other players, and its 7 sync settings.
+    var syncCands by remember { mutableStateOf(listOf<Pair<String, String>>()) }
+    var syncTick by remember { mutableStateOf(0) }
+    var syncPrefs by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
+    val syncListState = rememberLazyListState()
 
     // "list", "lms" or "jellyfin"; popup is "", "bg", "vol" or "player".
     var screen by remember { mutableStateOf("list") }
@@ -192,7 +200,15 @@ fun SettingsScreen(
     // Row 7: Default player (from the ⋮ menu) or Save and start (first start).
     // Row 8 (only from the ⋮ menu): which items My Music shows.
     // Row 9 (only from the ⋮ menu): the track info button on/off.
-    val rowCount = if (hasCancel) 10 else 8
+    // Row 10 (only from the ⋮ menu): Synchronize… (couple players / sync settings of the selected player).
+    val rowCount = if (hasCancel) 11 else 8
+    val rp = if (hasCancel) 6.dp else 10.dp
+    val playerOk: () -> Boolean = { LMS.playerMac.isNotBlank() && LMS.playerMac != "00:00:00:00:00:00" }
+    val syncChange: (String, Int) -> Unit = { name, v ->
+        syncPrefs = syncPrefs + (name to v)
+        val mac = LMS.playerMac
+        kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch { LMS.setSyncPref(mac, name, v) }
+    }
     val myMusicIds = listOf("albumartists", "artists", "composers", "genres", "years", "releases", "newmusic", "folders", "favorites", "playlists")
     val myMusicLabels = listOf(
         stringResource(R.string.browse_album_artists), stringResource(R.string.browse_artists), stringResource(R.string.browse_composers), stringResource(R.string.browse_genres),
@@ -223,6 +239,7 @@ fun SettingsScreen(
             localPlayerAutoStart = localPlayerAutoStart && localPlayerApp != SettingsRepository.LOCAL_PLAYER_NONE,
             showVolumeSlider = showVolumeSlider,
             showTrackInfoButton = showTrackInfoButton,
+            showTrackInfoLine = showTrackInfoLine,
             localPlayerDeviceVolume = localPlayerDeviceVolume && localPlayerApp != SettingsRepository.LOCAL_PLAYER_NONE,
             localPlayerFixedVolume = localPlayerFixedVolume,
         )
@@ -332,7 +349,9 @@ fun SettingsScreen(
 
     // Back closes a choice list or a fill-in screen first.
     BackHandler(enabled = popup.isNotEmpty() || screen != "list") {
-        if (popup.isNotEmpty()) popup = "" else { commitServers(); screen = "list" }
+        if (popup == "syncpick") { popup = "syncmenu"; popupIndex = 0 }
+        else if (popup == "syncset") { popup = "syncmenu"; popupIndex = 1 }
+        else if (popup.isNotEmpty()) popup = "" else { commitServers(); screen = "list" }
     }
 
     // Keep the highlighted row of the default-player list in view.
@@ -347,6 +366,18 @@ fun SettingsScreen(
                 if (popupIndex < first) defListState.scrollToItem(popupIndex)
                 else if (popupIndex > first + visible - 1) defListState.scrollToItem(popupIndex - visible + 1)
             }
+        }
+    }
+
+    LaunchedEffect(popup) {
+        if (popup == "syncset") syncPrefs = withContext(Dispatchers.IO) { LMS.getSyncPrefs(LMS.playerMac) }
+    }
+    LaunchedEffect(popupIndex, popup) {
+        if (popup == "syncpick" && popupIndex in syncCands.indices) {
+            val first = syncListState.firstVisibleItemIndex
+            val visible = syncListState.layoutInfo.visibleItemsInfo.size.coerceAtLeast(1)
+            if (popupIndex < first) syncListState.scrollToItem(popupIndex)
+            else if (popupIndex > first + visible - 1) syncListState.scrollToItem(popupIndex - visible + 1)
         }
     }
 
@@ -408,6 +439,9 @@ fun SettingsScreen(
                                     "seek" -> seekValues.size
                                     "defplayer" -> defPlayers.size + 2
                                     "mymusic" -> myMusicIds.size
+                                    "syncmenu" -> 2
+                                    "syncpick" -> syncCands.size.coerceAtLeast(1)
+                                    "syncset" -> LMS.syncPrefNames.size
                                     else -> playerRows.size
                                 }
                                 when {
@@ -424,6 +458,23 @@ fun SettingsScreen(
                                         hiddenPlayers = if (mac in hiddenPlayers) hiddenPlayers - mac else hiddenPlayers + mac
                                         persist()
                                     }
+                                    event.key == Key.DirectionRight && popup == "syncset" && popupIndex >= 3 -> {
+                                        val n = LMS.syncPrefNames[popupIndex]
+                                        val big = popupIndex < 5
+                                        val cur = syncPrefs[n] ?: 0
+                                        val nv = (cur + if (big) 10 else 1).coerceAtMost(if (big) 1000 else 100)
+                                        if (nv != cur) syncChange(n, nv)
+                                    }
+                                    event.key == Key.DirectionLeft && popup == "syncset" -> {
+                                        if (popupIndex < 3) { popup = "syncmenu"; popupIndex = 1 } else {
+                                            val n = LMS.syncPrefNames[popupIndex]
+                                            val cur = syncPrefs[n] ?: 0
+                                            val nv = (cur - if (popupIndex < 5) 10 else 1).coerceAtLeast(0)
+                                            if (nv != cur) syncChange(n, nv)
+                                        }
+                                    }
+                                    event.key == Key.DirectionLeft && popup == "syncpick" -> { popup = "syncmenu"; popupIndex = 0 }
+                                    event.key == Key.DirectionLeft && popup == "syncmenu" -> popup = ""
                                     isOk -> when (popup) {
                                         "bg" -> { backgroundStyle = bgValues[popupIndex]; popup = ""; persist() }
                                         "vol" -> { volumeStep = volValues[popupIndex]; popup = ""; persist() }
@@ -452,6 +503,25 @@ fun SettingsScreen(
                                                 persist()
                                                 refreshPlayersNow()
                                             }
+                                        }
+                                        "syncmenu" -> if (popupIndex == 0) {
+                                            syncCands = LMS.players.filter { it.second != LMS.playerMac && it.second !in hiddenPlayers }
+                                            if (syncCands.isNotEmpty()) { popupIndex = 0; popup = "syncpick" }
+                                        } else { popupIndex = 0; popup = "syncset" }
+                                        "syncpick" -> {
+                                            val other = syncCands.getOrNull(popupIndex)
+                                            if (other != null) {
+                                                val cur = LMS.playerMac
+                                                kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+                                                    LMS.toggleSync(cur, other.second)
+                                                    LMS.getPlayers()
+                                                    withContext(Dispatchers.Main) { syncTick++ }
+                                                }
+                                            }
+                                        }
+                                        "syncset" -> if (popupIndex < 3) {
+                                            val n = LMS.syncPrefNames[popupIndex]
+                                            syncChange(n, if ((syncPrefs[n] ?: 0) == 1) 0 else 1)
                                         }
                                         else -> {
                                             val none = localPlayerApp == SettingsRepository.LOCAL_PLAYER_NONE
@@ -492,7 +562,14 @@ fun SettingsScreen(
                                         popup = "defplayer"
                                     }
                                     8 -> if (hasCancel) { popupIndex = 0; popup = "mymusic" }
-                                    9 -> if (hasCancel) { showTrackInfoButton = !showTrackInfoButton; persist() }
+                                    9 -> if (hasCancel) {
+                                        // Off -> button -> line -> button and line -> off
+                                        val next = (when { showTrackInfoButton && showTrackInfoLine -> 3; showTrackInfoLine -> 2; showTrackInfoButton -> 1; else -> 0 } + 1) % 4
+                                        showTrackInfoButton = next == 1 || next == 3
+                                        showTrackInfoLine = next == 2 || next == 3
+                                        persist()
+                                    }
+                                    10 -> if (hasCancel && playerOk()) { popupIndex = 0; popup = "syncmenu" }
                                 }
                                 else -> return@onKeyEvent false
                             }
@@ -605,6 +682,77 @@ fun SettingsScreen(
                                 trailing = { Switch(checked = onlyControlDefault && defaultPlayerMac.isNotEmpty(), onCheckedChange = null) }
                             )
                         }
+                        "syncmenu" -> {
+                            SRow(stringResource(R.string.menu_sync) + " " + LMS.playerName, Icons.Outlined.Link, false, bold = true)
+                            val anyOther = LMS.players.any { it.second != LMS.playerMac && it.second !in hiddenPlayers }
+                            SRow(stringResource(R.string.menu_sync_with) + "…", Icons.Outlined.Link, popupIndex == 0, dim = !anyOther)
+                            SRow(stringResource(R.string.menu_sync_settings), Icons.Outlined.Tune, popupIndex == 1)
+                        }
+                        "syncpick" -> {
+                            val tick = syncTick
+                            val total = syncCands.size
+                            SRow(
+                                stringResource(R.string.menu_sync_with) + " " + LMS.playerName +
+                                    if (total > DEF_ROWS_VISIBLE) " (${popupIndex + 1}/$total)" else "",
+                                Icons.Outlined.Link, false, bold = true
+                            )
+                            LazyColumn(
+                                state = syncListState,
+                                modifier = Modifier
+                                    .heightIn(max = DEF_ROW_HEIGHT * DEF_ROWS_VISIBLE)
+                                    .drawWithContent {
+                                        drawContent()
+                                        val info = syncListState.layoutInfo
+                                        val t = info.totalItemsCount
+                                        val shown = info.visibleItemsInfo.size
+                                        if (t > shown && shown > 0) {
+                                            drawRoundRect(
+                                                color = Color.White.copy(alpha = 0.85f),
+                                                topLeft = Offset(size.width - 6.dp.toPx(), size.height * syncListState.firstVisibleItemIndex / t),
+                                                size = Size(4.dp.toPx(), size.height * shown / t),
+                                                cornerRadius = CornerRadius(2.dp.toPx())
+                                            )
+                                        }
+                                    }
+                            ) {
+                                items(total) { i ->
+                                    val p = syncCands[i]
+                                    Box(Modifier.fillMaxWidth().height(DEF_ROW_HEIGHT), contentAlignment = Alignment.CenterStart) {
+                                        SRow(
+                                            p.first, null, popupIndex == i,
+                                            trailing = { Text(if (tick >= 0 && LMS.inSameSyncGroup(LMS.playerMac, p.second)) "☑" else "☐", color = Color.White) }
+                                        )
+                                    }
+                                }
+                            }
+                            if (total > DEF_ROWS_VISIBLE) {
+                                Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.3f)))
+                            }
+                        }
+                        "syncset" -> {
+                            SRow(stringResource(R.string.menu_sync_settings_title) + " " + LMS.playerName, Icons.Outlined.Tune, false, bold = true)
+                            val labels = listOf(
+                                R.string.sync_pref_volume, R.string.sync_pref_power, R.string.sync_pref_maintain,
+                                R.string.sync_pref_start_delay, R.string.sync_pref_audio_delay,
+                                R.string.sync_pref_min_adjust, R.string.sync_pref_packet
+                            )
+                            LMS.syncPrefNames.forEachIndexed { i, name ->
+                                val v = syncPrefs[name]
+                                SRow(
+                                    stringResource(labels[i]), null, popupIndex == i,
+                                    trailing = {
+                                        Text(
+                                            when {
+                                                v == null -> "…"
+                                                i < 3 -> if (v == 1) "☑" else "☐"
+                                                else -> "‹ $v ›"
+                                            },
+                                            color = Color.White
+                                        )
+                                    }
+                                )
+                            }
+                        }
                         "player" -> {
                             SRow(stringResource(R.string.menu_local_player_prefix), Icons.Filled.PlayArrow, false, bold = true)
                             playerRows.forEachIndexed { i, id ->
@@ -625,23 +773,29 @@ fun SettingsScreen(
                         }
                         else -> {
                             SRow(stringResource(R.string.settings_title), SettingsMenuIcon, false, bold = true)
-                            SRow("Lyrion: ${lmsUrl.ifBlank { notSet }}", ServerIcon, highlighted == 0)
-                            SRow("Jellyfin: ${jellyfinUrl.ifBlank { notSet }}", FilmstripIcon, highlighted == 1)
-                            SRow("${stringResource(R.string.menu_background_prefix)}: ${bgLabels[bgValues.indexOf(backgroundStyle).coerceAtLeast(0)]}", BackgroundMenuIcon, highlighted == 2)
-                            SRow("${stringResource(R.string.menu_standby_prefix)}: ${if (standbyOnExit) onLabel else offLabel}", StandbyMenuIcon, highlighted == 3)
-                            SRow("${stringResource(R.string.menu_volume_step_prefix)}: $volumeStep%", VolumeIcon, highlighted == 4)
-                            SRow("${stringResource(R.string.menu_seek_step_prefix)}: $seekStep s", Icons.Filled.FastForward, highlighted == 5)
+                            SRow("Lyrion: ${lmsUrl.ifBlank { notSet }}", ServerIcon, highlighted == 0, vPad = rp)
+                            SRow("Jellyfin: ${jellyfinUrl.ifBlank { notSet }}", FilmstripIcon, highlighted == 1, vPad = rp)
+                            SRow("${stringResource(R.string.menu_background_prefix)}: ${bgLabels[bgValues.indexOf(backgroundStyle).coerceAtLeast(0)]}", BackgroundMenuIcon, highlighted == 2, vPad = rp)
+                            SRow("${stringResource(R.string.menu_standby_prefix)}: ${if (standbyOnExit) onLabel else offLabel}", StandbyMenuIcon, highlighted == 3, vPad = rp)
+                            SRow("${stringResource(R.string.menu_volume_step_prefix)}: $volumeStep%", VolumeIcon, highlighted == 4, vPad = rp)
+                            SRow("${stringResource(R.string.menu_seek_step_prefix)}: $seekStep s", Icons.Filled.FastForward, highlighted == 5, vPad = rp)
                             SRow(
                                 "${stringResource(R.string.menu_local_player_prefix)}: ${playerLabels[playerApps.indexOf(localPlayerApp).coerceAtLeast(0)]}" +
                                     if (localPlayerAutoStart && localPlayerApp != SettingsRepository.LOCAL_PLAYER_NONE) " (${stringResource(R.string.menu_local_player_auto)})" else "",
-                                Icons.Filled.PlayArrow, highlighted == 6
+                                Icons.Filled.PlayArrow, highlighted == 6, vPad = rp
                             )
                             if (hasCancel) {
-                                SRow("${stringResource(R.string.menu_default_player_prefix)}: ${defaultPlayerName.ifBlank { noneLabel }}", Icons.Filled.Check, highlighted == 7)
-                                SRow(stringResource(R.string.settings_mymusic_items), null, highlighted == 8)
-                                SRow("${stringResource(R.string.settings_track_info_button)}: ${if (showTrackInfoButton) onLabel else offLabel}", Icons.Outlined.Info, highlighted == 9)
+                                SRow("${stringResource(R.string.menu_default_player_prefix)}: ${defaultPlayerName.ifBlank { noneLabel }}", Icons.Filled.Check, highlighted == 7, vPad = rp)
+                                SRow(stringResource(R.string.settings_mymusic_items), null, highlighted == 8, vPad = rp)
+                                SRow("${stringResource(R.string.settings_track_info)}: " + when {
+                                    showTrackInfoButton && showTrackInfoLine -> stringResource(R.string.info_mode_both)
+                                    showTrackInfoButton -> stringResource(R.string.info_mode_button)
+                                    showTrackInfoLine -> stringResource(R.string.info_mode_line)
+                                    else -> offLabel
+                                }, Icons.Outlined.Info, highlighted == 9, vPad = rp)
+                                SRow(stringResource(R.string.menu_sync), Icons.Outlined.Link, highlighted == 10, dim = !playerOk(), vPad = rp)
                             } else {
-                                SRow(stringResource(R.string.settings_save_and_start), null, highlighted == saveRow, bold = true)
+                                SRow(stringResource(R.string.settings_save_and_start), null, highlighted == saveRow, vPad = rp, bold = true)
                             }
                         }
                     }
@@ -683,13 +837,14 @@ fun SettingsScreen(
 private fun SRow(
     text: String, icon: ImageVector?, highlighted: Boolean, bold: Boolean = false,
     dim: Boolean = false, trailing: (@Composable () -> Unit)? = null,
+    vPad: androidx.compose.ui.unit.Dp = 10.dp,
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
             .background(if (highlighted) Color.White.copy(alpha = 0.3f) else Color.Transparent)
-            .padding(horizontal = 16.dp, vertical = 10.dp)
+            .padding(horizontal = 16.dp, vertical = vPad)
     ) {
         if (icon != null) {
             Icon(imageVector = icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))

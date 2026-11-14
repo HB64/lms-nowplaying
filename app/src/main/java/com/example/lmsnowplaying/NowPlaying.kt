@@ -137,6 +137,7 @@ fun PlayerScreen(){
     var lmsArtUrl by remember { mutableStateOf("")}
     var artistDefaultArtUrl by remember { mutableStateOf("")}
     var albumArtUrl by remember { mutableStateOf("")}
+    var streamService by remember { mutableStateOf("") }
     var playing by remember { mutableStateOf(LMS.isPlaying) }
     var elapsedTime by remember { mutableStateOf(LMS.elapsedTime) }
     var trackDuration by remember { mutableStateOf(LMS.trackDuration) }
@@ -257,6 +258,7 @@ fun PlayerScreen(){
                         albumName = ""
                         albumYear = ""
                         albumArtUrl = ""
+                        streamService = ""
                         lmsArtUrl = ""
                         artistDefaultArtUrl = ""
                         jellyfinArtUrl = ""
@@ -276,6 +278,7 @@ fun PlayerScreen(){
                     albumName = _albumName
                     albumYear = _albumYear
                     artistName = _artistName
+                    streamService = LMS.streamServiceName(result.getOrElse(7) { "" })
                     // Show all artists of the track; the backdrop lookup below keeps using the first one.
                     CoroutineScope(Dispatchers.IO).launch {
                         val all = LMS.getTrackArtists(macAtStart)
@@ -465,6 +468,42 @@ fun PlayerScreen(){
                     .clip(RoundedCornerShape(16.dp))
                     .background(Color.Black)){
                     GetAlbumArt(albumArtUrl, onColor = { accentColor = it })
+                    // Streaming service of the track (Qobuz, Tidal, Spotify, Deezer, YouTube Music)
+                    if (streamService.isNotEmpty()) {
+                        // Logo when the app has one (res/drawable-nodpi/badge_<service>.png),
+                        // otherwise the service name as text.
+                        val badgeContext = LocalContext.current
+                        val badgeRes = remember(streamService) {
+                            badgeContext.resources.getIdentifier(
+                                "badge_" + streamService.lowercase().replace(" ", "_"),
+                                "drawable", badgeContext.packageName
+                            )
+                        }
+                        if (badgeRes != 0) {
+                            androidx.compose.foundation.Image(
+                                painter = androidx.compose.ui.res.painterResource(badgeRes),
+                                contentDescription = streamService,
+                                alpha = 0.6f,
+                                modifier = Modifier
+                                    .align(Alignment.BottomStart)
+                                    .padding(8.dp)
+                                    .size(22.dp)
+                            )
+                        } else {
+                            Text(
+                                text = streamService,
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                maxLines = 1,
+                                modifier = Modifier
+                                    .align(Alignment.BottomStart)
+                                    .padding(8.dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(Color.Black.copy(alpha = 0.7f))
+                                    .padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
                 }
                 Spacer(modifier = Modifier.size(24.dp))
                 Column(verticalArrangement = Arrangement.Center, modifier = Modifier.weight(1f)) {
@@ -525,6 +564,9 @@ fun PlayerScreen(){
                                 .fillMaxWidth()
                                 .basicMarquee(iterations = Int.MAX_VALUE)
                         )
+                    }
+                    if (AppConfig.current.showTrackInfoLine) {
+                        com.example.lmsnowplaying.composable.TrackInfoLine(songName)
                     }
                     if (nextTitle.isNotBlank()) {
                         Spacer(modifier = Modifier.size(16.dp))

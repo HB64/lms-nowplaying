@@ -25,6 +25,10 @@
     <string name="menu_players_header">Spelers</string>
     <string name="default_player_info">OK kiest de standaardspeler. D-pad rechts toont of verbergt een speler in het ⋮-menu (☑ = zichtbaar); verborgen spelers blijven actief, ze staan alleen niet in de lijst. “Alleen standaardspeler bedienen” beperkt de app tot de standaardspeler.</string>
     <string name="settings_track_info_button">Trackinfo-knop</string>
+    <string name="settings_track_info">Trackinfo</string>
+    <string name="info_mode_button">Knop naast titel</string>
+    <string name="info_mode_line">Regel onder track</string>
+    <string name="info_mode_both">Knop en regel</string>
     <string name="settings_mymusic_items">Mijn Muziek-items</string>
     <string name="menu_standby_prefix">Stand-by bij afsluiten</string>
     <string name="menu_standby_on">Aan</string>
@@ -48,6 +52,15 @@
     <string name="browse_releases">Releases</string>
     <string name="menu_sync">Synchroniseren…</string>
     <string name="menu_sync_with">Synchroniseren met</string>
+    <string name="menu_sync_settings">Sync-instellingen…</string>
+    <string name="menu_sync_settings_title">Sync-instellingen</string>
+    <string name="sync_pref_volume">Volume synchroniseren</string>
+    <string name="sync_pref_power">Groep samen aan/uit</string>
+    <string name="sync_pref_maintain">Synchroon houden</string>
+    <string name="sync_pref_start_delay">Startvertraging (ms)</string>
+    <string name="sync_pref_audio_delay">Audiovertraging (ms)</string>
+    <string name="sync_pref_min_adjust">Min. correctie (ms)</string>
+    <string name="sync_pref_packet">Pakketvertraging (ms)</string>
     <string name="info_title">Trackinfo</string>
     <string name="info_format">Formaat</string>
     <string name="info_bit_depth">Bitdiepte</string>

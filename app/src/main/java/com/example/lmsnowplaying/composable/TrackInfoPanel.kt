@@ -1,7 +1,13 @@
 package com.example.lmsnowplaying.composable
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -75,6 +81,42 @@ fun TrackInfoPanel(trackKey: String) {
                     Text(v, color = Color.White, fontSize = 14.sp)
                 }
             }
+        }
+    }
+}
+
+// One line under the album line: format, bit depth, sample rate, bitrate.
+// The height is reserved, so the rows below do not jump while it loads or when a track has no info.
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+fun TrackInfoLine(trackKey: String) {
+    val trackId = LMS.currentTrackId
+    var info by remember { mutableStateOf<Map<String, String>?>(null) }
+    LaunchedEffect(trackId, trackKey) {
+        info = null
+        info = if ((trackId.toIntOrNull() ?: -1) >= 0) withContext(Dispatchers.IO) { LMS.getTrackTech(trackId) } else emptyMap()
+    }
+    val m = info
+    val parts = if (m == null) emptyList() else {
+        fun value(key: String) = m[key]?.trim().orEmpty()
+        listOfNotNull(
+            value("type").takeIf { it.isNotEmpty() }?.let { formatName(it) },
+            value("samplesize").takeIf { it.isNotEmpty() && it != "0" }?.let { "$it-bit" },
+            value("samplerate").toDoubleOrNull()?.takeIf { it > 0 }?.let { sampleRateText(it) },
+            value("bitrate").takeIf { it.isNotEmpty() },
+        )
+    }
+    Spacer(modifier = Modifier.height(4.dp))
+    Box(modifier = Modifier.fillMaxWidth().height(20.dp), contentAlignment = Alignment.Center) {
+        if (parts.isNotEmpty()) {
+            Text(
+                parts.joinToString(" · "),
+                color = Color.White.copy(alpha = 0.65f),
+                fontSize = 13.sp,
+                maxLines = 1,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE)
+            )
         }
     }
 }

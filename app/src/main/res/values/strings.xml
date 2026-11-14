@@ -25,6 +25,10 @@
     <string name="menu_players_header">Players</string>
     <string name="default_player_info">OK picks the default player. D-pad right shows or hides a player in the ⋮ menu (☑ = shown); hidden players stay active, they are just not listed. “Only control default” limits the app to the default player.</string>
     <string name="settings_track_info_button">Track info button</string>
+    <string name="settings_track_info">Track info</string>
+    <string name="info_mode_button">Button next to title</string>
+    <string name="info_mode_line">Line under track</string>
+    <string name="info_mode_both">Button and line</string>
     <string name="settings_mymusic_items">My Music items</string>
     <string name="menu_standby_prefix">Standby on exit</string>
     <string name="menu_standby_on">On</string>
@@ -48,6 +52,15 @@
     <string name="browse_releases">Releases</string>
     <string name="menu_sync">Synchronize…</string>
     <string name="menu_sync_with">Sync with</string>
+    <string name="menu_sync_settings">Sync settings…</string>
+    <string name="menu_sync_settings_title">Sync settings</string>
+    <string name="sync_pref_volume">Sync volume</string>
+    <string name="sync_pref_power">Group power on/off</string>
+    <string name="sync_pref_maintain">Keep in sync</string>
+    <string name="sync_pref_start_delay">Start delay (ms)</string>
+    <string name="sync_pref_audio_delay">Audio delay (ms)</string>
+    <string name="sync_pref_min_adjust">Min. adjustment (ms)</string>
+    <string name="sync_pref_packet">Packet delay (ms)</string>
     <string name="info_title">Track info</string>
     <string name="info_format">Format</string>
     <string name="info_bit_depth">Bit depth</string>

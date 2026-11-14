@@ -209,6 +209,21 @@ object LMS{
         }
     }
 
+    // Per-player sync settings, same order as the sync-settings panel (all values: 0/1 or milliseconds).
+    val syncPrefNames = listOf("syncVolume", "syncPower", "maintainSync", "startDelay", "playDelay", "minSyncAdjust", "packetLatency")
+
+    suspend fun getSyncPrefs(mac: String): Map<String, Int> =
+        safeCall("getSyncPrefs", emptyMap()) {
+            syncPrefNames.associateWith { playerPref(mac, it).toIntOrNull() ?: 0 }
+        }
+
+    suspend fun setSyncPref(mac: String, name: String, value: Int) {
+        safeCall("setSyncPref", Unit) {
+            rpcPlayer(mac, listOf("playerpref", name, value.toString()))
+            Unit
+        }
+    }
+
     // mac -> (model, model name) as reported by the server, for the player icons
     var playerModels: Map<String, Pair<String, String>> = emptyMap()
         private set
@@ -488,14 +503,32 @@ object LMS{
         }
     }
 
+    // Name of the streaming service a track URL belongs to, or "" (library files and plain web radio).
+    // Known services get a proper name; any other plugin scheme (foo://...) shows its scheme.
+    fun streamServiceName(url: String): String {
+        val scheme = url.substringBefore(":", "").lowercase()
+        return when (scheme) {
+            "qobuz" -> "Qobuz"
+            "tidal", "wimp" -> "Tidal"
+            "spotify" -> "Spotify"
+            "deezer", "deezerpodcast" -> "Deezer"
+            "ytm", "ytmplaylist" -> "YouTube Music"
+            "youtube" -> "YouTube"
+            "soundcloud" -> "SoundCloud"
+            // Internal schemes of other plugins, and local/plain-web sources: no badge
+            "randomflow", "", "file", "http", "https", "ftp", "mms", "rtmp", "rtsp" -> ""
+            else -> if (scheme.length >= 2 && scheme.all { it.isLetterOrDigit() }) scheme.replaceFirstChar { it.uppercase() } else ""
+        }
+    }
+
     suspend fun update(playerMAC: String): List<String> {
-        return safeCall("update", listOf("", "", "", "", "", "", "")) {
-            // "tags:acly4K" asks for artist/coverid/album/year plus "K"
+        return safeCall("update", listOf("", "", "", "", "", "", "", "")) {
+            // "tags:acly4Ku" asks for artist/coverid/album/year plus "K"
             // (artwork_url) directly on the status call. artwork_url is how
             // remote sources - internet radio, Spotify/Tidal-style plugins -
             // carry their own cover art; those tracks have no local coverid
             // and no real library track_id to look up via songinfo at all.
-            val reqString = "{\"method\": \"slim.request\", \"params\": [\"$playerMAC\", [\"status\", \"-\",1,\"tags:acly4K\"]]}"
+            val reqString = "{\"method\": \"slim.request\", \"params\": [\"$playerMAC\", [\"status\", \"-\",1,\"tags:acly4Ku\"]]}"
             val requestBody = reqString.toRequestBody("application/json".toMediaTypeOrNull())
             val res = lmsApi.getCurrentSong(requestBody)
             val jsonData: String? = res.body()?.string()
@@ -509,6 +542,7 @@ object LMS{
             var album = ""
             var year = ""
             var artworkUrl = ""
+            var trackUrl = ""
 
             try {
                 val resultLoop = getObject.getJSONArray("playlist_loop")
@@ -519,6 +553,7 @@ object LMS{
                 album = firstResult.optString("album", "")
                 year = firstResult.optString("year", "")
                 artworkUrl = firstResult.optString("artwork_url", "")
+                trackUrl = firstResult.optString("url", "")
                 val id = firstResult.optString("id", "")
                 currentTrackId = id
                 Log.w(TAG, "update: id=\"$id\" title=\"$title\" coverid=\"$coverid\" artwork_url=\"$artworkUrl\"")
@@ -554,10 +589,10 @@ object LMS{
 
             } catch (e: JSONException) {
                 Log.w(TAG, "update: parsing playlist_loop/songinfo failed: ${e.message}")
-                return@safeCall listOf(title, artist, coverid, portraitId, album, year, artworkUrl)
+                return@safeCall listOf(title, artist, coverid, portraitId, album, year, artworkUrl, trackUrl)
             }
 
-            listOf(title, artist, coverid, portraitId, album, year, artworkUrl)
+            listOf(title, artist, coverid, portraitId, album, year, artworkUrl, trackUrl)
         }
     }
 
