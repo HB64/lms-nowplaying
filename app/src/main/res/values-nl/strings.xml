@@ -46,6 +46,8 @@
     <string name="browse_album_artists">Albumartiesten</string>
     <string name="browse_composers">Composities</string>
     <string name="browse_releases">Releases</string>
+    <string name="menu_sync">Synchroniseren…</string>
+    <string name="menu_sync_with">Synchroniseren met</string>
     <string name="info_title">Trackinfo</string>
     <string name="info_format">Formaat</string>
     <string name="info_bit_depth">Bitdiepte</string>

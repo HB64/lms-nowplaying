@@ -69,9 +69,9 @@ fun TrackInfoPanel(trackKey: String) {
             m == null -> Text(stringResource(R.string.common_loading), color = Color.White.copy(alpha = 0.7f), fontSize = 14.sp)
             rows.isEmpty() -> Text(stringResource(R.string.info_none), color = Color.White.copy(alpha = 0.7f), fontSize = 14.sp)
             else -> rows.forEach { (label, v) ->
-                Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.padding(vertical = 3.dp)) {
-                    Text(label, color = Color.White.copy(alpha = 0.65f), fontSize = 14.sp)
-                    Spacer(Modifier.width(16.dp))
+                Row(modifier = Modifier.padding(vertical = 3.dp)) {
+                    // Fixed label width so all values line up in one column
+                    Text(label, color = Color.White.copy(alpha = 0.65f), fontSize = 14.sp, modifier = Modifier.width(160.dp))
                     Text(v, color = Color.White, fontSize = 14.sp)
                 }
             }

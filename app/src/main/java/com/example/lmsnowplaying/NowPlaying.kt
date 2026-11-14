@@ -782,8 +782,15 @@ fun PlayerScreen(){
                                 // wake implicitly on a play command.
                                 if (newPlaying) {
                                     LMS.power(true)
+                                    // Some players resume by themselves when powered on
+                                    // (their own setting); a "play" on top of that restarts
+                                    // the track from the beginning. So check first.
+                                    delay(800)
+                                    LMS.status()
+                                    if (!LMS.isPlaying) LMS.playPause(true)
+                                } else {
+                                    LMS.playPause(false)
                                 }
-                                LMS.playPause(newPlaying)
                             }
                         }
                     }

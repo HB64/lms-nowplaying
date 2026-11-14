@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -210,20 +211,25 @@ fun MyUI() {
             // "Only control default": no player list, only the other rows.
             val onlyDefault = AppConfig.current.onlyControlDefault && AppConfig.current.defaultPlayerMac.isNotBlank()
             val listCount = if (onlyDefault) 0 else data.size
+            // "Synchronize…" row: needs a selected player and at least one other player.
+            val currentMac = LMS.playerMac
+            val syncCandidates = data.filter { it.second != currentMac }
+            val hasSync = currentMac != "00:00:00:00:00:00" && syncCandidates.isNotEmpty()
 
             // Start on the player that is currently selected
             var highlightedIndex by remember {
                 mutableStateOf(
-                    if (returningFromSettings) listCount + 1 + (if (hasLocal) 1 else 0)
+                    if (returningFromSettings) listCount + 1 + (if (hasLocal) 1 else 0) + (if (hasSync) 1 else 0)
                     else if (onlyDefault) 0 else data.indexOfFirst { it.second == LMS.playerMac }.coerceAtLeast(0)
                 )
             }
             var menuHasFocus by remember { mutableStateOf(false) }
             // +1 for the standby-on-exit row, +1 for the local player row
             // (if any), +1 for the "Settings" entry.
-            val totalItems = listCount + 2 + (if (hasLocal) 1 else 0)
+            val totalItems = listCount + 2 + (if (hasLocal) 1 else 0) + (if (hasSync) 1 else 0)
             val standbyRowIndex = listCount
             val localRowIndex = if (hasLocal) listCount + 1 else -1
+            val syncRowIndex = if (hasSync) listCount + 1 + (if (hasLocal) 1 else 0) else -1
             val settingsRowIndex = totalItems - 1
             val menuFocusRequester = remember { FocusRequester() }
             // The player list scrolls inside a limited height, so the rows below
@@ -236,6 +242,20 @@ fun MyUI() {
                     val visible = info.visibleItemsInfo.size.coerceAtLeast(1)
                     if (highlightedIndex < first) playerListState.scrollToItem(highlightedIndex)
                     else if (highlightedIndex > first + visible - 1) playerListState.scrollToItem(highlightedIndex - visible + 1)
+                }
+            }
+
+            // Sync list: the other players with a checkbox (☑ = in sync with the selected player).
+            var syncMode by remember { mutableStateOf(false) }
+            var syncIndex by remember { mutableStateOf(0) }
+            val syncListState = rememberLazyListState()
+            LaunchedEffect(syncIndex, syncMode) {
+                if (syncMode) {
+                    val info = syncListState.layoutInfo
+                    val first = syncListState.firstVisibleItemIndex
+                    val visible = info.visibleItemsInfo.size.coerceAtLeast(1)
+                    if (syncIndex < first) syncListState.scrollToItem(syncIndex)
+                    else if (syncIndex > first + visible - 1) syncListState.scrollToItem(syncIndex - visible + 1)
                 }
             }
 
@@ -288,6 +308,26 @@ fun MyUI() {
                     .onKeyEvent { event ->
                         if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
                         lastMenuKey = System.currentTimeMillis()
+                        if (syncMode) {
+                            val n = syncCandidates.size
+                            if (n == 0) { syncMode = false; return@onKeyEvent true }
+                            when (event.key) {
+                                Key.DirectionDown -> syncIndex = (syncIndex + 1) % n
+                                Key.DirectionUp -> syncIndex = (syncIndex - 1 + n) % n
+                                Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
+                                    val other = syncCandidates.getOrNull(syncIndex)
+                                    if (other != null) {
+                                        CoroutineScope(Dispatchers.IO).launch {
+                                            LMS.toggleSync(currentMac, other.second)
+                                            LMS.getPlayers()
+                                        }
+                                    }
+                                }
+                                Key.Back, Key.DirectionLeft -> syncMode = false
+                                else -> {}
+                            }
+                            return@onKeyEvent true
+                        }
                         when (event.key) {
                             Key.DirectionDown -> {
                                 highlightedIndex = (highlightedIndex + 1) % totalItems
@@ -317,6 +357,9 @@ fun MyUI() {
                                     // (dis)connects (the list refreshes every 2 s meanwhile).
                                     if (localRunning) LocalPlayer.stop(contextForToast, localApp)
                                     else LocalPlayer.start(contextForToast, localApp)
+                                } else if (highlightedIndex == syncRowIndex) {
+                                    syncIndex = 0
+                                    syncMode = true
                                 } else {
                                     NavState.reopenMenu = true
                                     NavState.showSettings = true
@@ -332,6 +375,68 @@ fun MyUI() {
                         }
                     }
             ) {
+                if (syncMode) {
+                    Text(
+                        text = "${stringResource(R.string.menu_sync_with)} ${LMS.playerName}" +
+                            if (syncCandidates.size > PLAYER_ROWS_VISIBLE) " (${syncIndex + 1}/${syncCandidates.size})" else "",
+                        color = Color.White.copy(alpha = 0.6f),
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                    )
+                    LazyColumn(
+                        state = syncListState,
+                        modifier = Modifier
+                            .heightIn(max = PLAYER_ROW_HEIGHT * PLAYER_ROWS_VISIBLE)
+                            // Same scrollbar as the player list, so it is clear this list scrolls
+                            .drawWithContent {
+                                drawContent()
+                                val info = syncListState.layoutInfo
+                                val total = info.totalItemsCount
+                                val shown = info.visibleItemsInfo.size
+                                if (total > shown && shown > 0) {
+                                    val thumbH = size.height * shown / total
+                                    val thumbTop = size.height * syncListState.firstVisibleItemIndex / total
+                                    drawRoundRect(
+                                        color = Color.White.copy(alpha = 0.85f),
+                                        topLeft = Offset(size.width - 6.dp.toPx(), thumbTop),
+                                        size = Size(4.dp.toPx(), thumbH),
+                                        cornerRadius = CornerRadius(2.dp.toPx())
+                                    )
+                                }
+                            }
+                    ) {
+                        itemsIndexed(syncCandidates) { i, p ->
+                            val models = LMS.playerModels[p.second]
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(PLAYER_ROW_HEIGHT)
+                                    .background(if (syncIndex == i) Color.White.copy(alpha = 0.3f) else Color.Transparent)
+                                    .padding(horizontal = 16.dp)
+                            ) {
+                                Icon(
+                                    imageVector = playerIcon(models?.first ?: "", models?.second ?: ""),
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Text(
+                                    text = p.first,
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f).padding(horizontal = 10.dp)
+                                )
+                                Text(if (LMS.inSameSyncGroup(currentMac, p.second)) "\u2611" else "\u2610", color = Color.White)
+                            }
+                        }
+                    }
+                    if (syncCandidates.size > PLAYER_ROWS_VISIBLE) {
+                        Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.3f)))
+                    }
+                    return@Column
+                }
                 // Only when the list scrolls: a header showing where you are in it,
                 // and a line below it, so it is clear the list scrolls on its own.
                 val listScrolls = listCount > PLAYER_ROWS_VISIBLE
@@ -392,6 +497,15 @@ fun MyUI() {
                                     .weight(1f)
                                     .padding(horizontal = 10.dp)
                             )
+                            // Players that are synchronized with another one
+                            if (LMS.syncGroups.any { itemValue.second in it }) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Link,
+                                    contentDescription = "Synced",
+                                    tint = Color.White.copy(alpha = 0.7f),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -417,6 +531,14 @@ fun MyUI() {
                         ),
                         icon = null,
                         highlighted = highlightedIndex == localRowIndex
+                    )
+                }
+
+                if (hasSync) {
+                    MenuRow(
+                        text = stringResource(R.string.menu_sync),
+                        icon = Icons.Outlined.Link,
+                        highlighted = highlightedIndex == syncRowIndex
                     )
                 }
 

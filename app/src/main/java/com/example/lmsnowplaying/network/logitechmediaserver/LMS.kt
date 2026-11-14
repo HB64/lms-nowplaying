@@ -175,6 +175,40 @@ object LMS{
 
     @Volatile
     var players: MutableList<Pair<String, String>> = arrayListOf()
+    // Players that are synchronized with each other: one set of MACs per group (2 or more).
+    @Volatile
+    var syncGroups: List<Set<String>> = emptyList()
+
+    fun inSameSyncGroup(a: String, b: String): Boolean =
+        a != b && syncGroups.any { a in it && b in it }
+
+    // The groups as the server reports them ("syncgroups ?": sync_members = comma separated MACs).
+    private suspend fun fetchSyncGroups(): List<Set<String>> {
+        return safeCall("syncgroups", syncGroups) {
+            val res = rpcPlayer("", listOf("syncgroups", "?"))
+            val rawGroups = mutableListOf<String>()
+            val loop = res.optJSONArray("syncgroups_loop")
+            if (loop != null) {
+                for (i in 0 until loop.length()) rawGroups.add(loop.getJSONObject(i).optString("sync_members", ""))
+            } else if (res.has("sync_members")) {
+                rawGroups.add(res.optString("sync_members", ""))
+            }
+            rawGroups
+                .map { g -> g.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet() }
+                .filter { it.size >= 2 }
+        }
+    }
+
+    // Adds [otherMac] to the group of [currentMac], or takes it out again when it is
+    // already in that group ("sync <mac>" on the existing member joins; "sync -" leaves).
+    suspend fun toggleSync(currentMac: String, otherMac: String) {
+        safeCall("toggleSync", Unit) {
+            if (inSameSyncGroup(currentMac, otherMac)) rpcPlayer(otherMac, listOf("sync", "-"))
+            else rpcPlayer(currentMac, listOf("sync", otherMac))
+            Unit
+        }
+    }
+
     // mac -> (model, model name) as reported by the server, for the player icons
     var playerModels: Map<String, Pair<String, String>> = emptyMap()
         private set
@@ -230,7 +264,9 @@ object LMS{
                 // app that is not running). Hide those.
                 if (item.optInt("connected", 1) == 1) fresh.add(Pair(name, player_mac))
             }
-            val changed = fresh != players
+            val freshGroups = fetchSyncGroups()
+            val changed = fresh != players || freshGroups != syncGroups
+            syncGroups = freshGroups
             players = fresh
             playerModels = freshModels
             playerIps = freshIps
@@ -285,7 +321,10 @@ object LMS{
         // Put the player we're switching away from into standby, same as
         // when the app is fully exited - otherwise self-powered players
         // like the Boom just keep playing in the background unnoticed.
-        if (previousMac != "00:00:00:00:00:00" && previousMac != mac) {
+        // Not between players of one sync group: pausing or powering off one member
+        // would stop the whole group (Lyrion's "power on/off in group"), including
+        // the player we are switching to.
+        if (previousMac != "00:00:00:00:00:00" && previousMac != mac && !inSameSyncGroup(previousMac, mac)) {
             CoroutineScope(Dispatchers.IO).launch {
                 playPauseFor(previousMac, false)
                 powerFor(previousMac, false)
