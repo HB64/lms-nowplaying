@@ -139,6 +139,7 @@ fun SettingsScreen(
     var localPlayerAutoStart by remember { mutableStateOf(initial.localPlayerAutoStart) }
     var localPlayerStopOnExit by remember { mutableStateOf(initial.localPlayerStopOnExit) }
     var showVolumeSlider by remember { mutableStateOf(initial.showVolumeSlider) }
+    var showTrackInfoButton by remember { mutableStateOf(initial.showTrackInfoButton) }
     var localPlayerDeviceVolume by remember { mutableStateOf(initial.localPlayerDeviceVolume) }
     var localPlayerFixedVolume by remember { mutableStateOf(initial.localPlayerFixedVolume) }
     // Is this device's Squeezelite connected to Lyrion right now?
@@ -190,7 +191,8 @@ fun SettingsScreen(
     val saveRow = 7
     // Row 7: Default player (from the ⋮ menu) or Save and start (first start).
     // Row 8 (only from the ⋮ menu): which items My Music shows.
-    val rowCount = if (hasCancel) 9 else 8
+    // Row 9 (only from the ⋮ menu): the track info button on/off.
+    val rowCount = if (hasCancel) 10 else 8
     val myMusicIds = listOf("albumartists", "artists", "composers", "genres", "years", "releases", "newmusic", "folders", "favorites", "playlists")
     val myMusicLabels = listOf(
         stringResource(R.string.browse_album_artists), stringResource(R.string.browse_artists), stringResource(R.string.browse_composers), stringResource(R.string.browse_genres),
@@ -220,6 +222,7 @@ fun SettingsScreen(
             localPlayerStopOnExit = localPlayerStopOnExit,
             localPlayerAutoStart = localPlayerAutoStart && localPlayerApp != SettingsRepository.LOCAL_PLAYER_NONE,
             showVolumeSlider = showVolumeSlider,
+            showTrackInfoButton = showTrackInfoButton,
             localPlayerDeviceVolume = localPlayerDeviceVolume && localPlayerApp != SettingsRepository.LOCAL_PLAYER_NONE,
             localPlayerFixedVolume = localPlayerFixedVolume,
         )
@@ -489,6 +492,7 @@ fun SettingsScreen(
                                         popup = "defplayer"
                                     }
                                     8 -> if (hasCancel) { popupIndex = 0; popup = "mymusic" }
+                                    9 -> if (hasCancel) { showTrackInfoButton = !showTrackInfoButton; persist() }
                                 }
                                 else -> return@onKeyEvent false
                             }
@@ -635,6 +639,7 @@ fun SettingsScreen(
                             if (hasCancel) {
                                 SRow("${stringResource(R.string.menu_default_player_prefix)}: ${defaultPlayerName.ifBlank { noneLabel }}", Icons.Filled.Check, highlighted == 7)
                                 SRow(stringResource(R.string.settings_mymusic_items), null, highlighted == 8)
+                                SRow("${stringResource(R.string.settings_track_info_button)}: ${if (showTrackInfoButton) onLabel else offLabel}", Icons.Outlined.Info, highlighted == 9)
                             } else {
                                 SRow(stringResource(R.string.settings_save_and_start), null, highlighted == saveRow, bold = true)
                             }

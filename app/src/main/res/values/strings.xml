@@ -24,6 +24,7 @@
     <string name="menu_background_prefix">Background</string>
     <string name="menu_players_header">Players</string>
     <string name="default_player_info">OK picks the default player. D-pad right shows or hides a player in the ⋮ menu (☑ = shown); hidden players stay active, they are just not listed. “Only control default” limits the app to the default player.</string>
+    <string name="settings_track_info_button">Track info button</string>
     <string name="settings_mymusic_items">My Music items</string>
     <string name="menu_standby_prefix">Standby on exit</string>
     <string name="menu_standby_on">On</string>
@@ -45,6 +46,19 @@
     <string name="browse_album_artists">Album artists</string>
     <string name="browse_composers">Composers</string>
     <string name="browse_releases">Releases</string>
+    <string name="info_title">Track info</string>
+    <string name="info_format">Format</string>
+    <string name="info_bit_depth">Bit depth</string>
+    <string name="info_sample_rate">Sample rate</string>
+    <string name="info_bitrate">Bitrate</string>
+    <string name="info_lossless">Lossless</string>
+    <string name="info_gain_track">Replay gain (track)</string>
+    <string name="info_gain_album">Replay gain (album)</string>
+    <string name="info_file_size">File size</string>
+    <string name="info_tag_version">Tag version</string>
+    <string name="info_yes">Yes</string>
+    <string name="info_no">No</string>
+    <string name="info_none">No technical info available for this track</string>
     <string name="sort_by">Sort by</string>
     <string name="sort_release">Release</string>
     <string name="sort_artist_release">Artist, Release</string>

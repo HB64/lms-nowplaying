@@ -169,6 +169,10 @@ object LMS{
     // nothing queued and no other value on screen changes).
     val playerNameFlow = kotlinx.coroutines.flow.MutableStateFlow("No Player")
 
+    // Server id of the track now playing (set by update(); not a number for streams).
+    @Volatile
+    var currentTrackId: String = ""
+
     @Volatile
     var players: MutableList<Pair<String, String>> = arrayListOf()
     // mac -> (model, model name) as reported by the server, for the player icons
@@ -301,6 +305,20 @@ object LMS{
             listOf("trackartist", "artist")
                 .map { first.optString(it, "") }
                 .maxByOrNull { v -> v.split(", ").count { it.isNotBlank() } } ?: ""
+        }
+    }
+
+    // Technical details of one library track (format, bit depth, sample rate, bitrate,
+    // replay gain, lossless, size, tag version) as key -> value; only what the server knows.
+    suspend fun getTrackTech(trackId: String): Map<String, String> {
+        return safeCall("getTrackTech", emptyMap()) {
+            val loop = rpcLoop(listOf("songinfo", 0, 100, "track_id:$trackId", "tags:oTIrYXQfv"), "songinfo_loop")
+            val m = LinkedHashMap<String, String>()
+            for (i in 0 until loop.length()) {
+                val o = loop.getJSONObject(i)
+                o.keys().forEach { k -> m[k] = o.optString(k) }
+            }
+            m
         }
     }
 
@@ -463,6 +481,7 @@ object LMS{
                 year = firstResult.optString("year", "")
                 artworkUrl = firstResult.optString("artwork_url", "")
                 val id = firstResult.optString("id", "")
+                currentTrackId = id
                 Log.w(TAG, "update: id=\"$id\" title=\"$title\" coverid=\"$coverid\" artwork_url=\"$artworkUrl\"")
 
                 // The extra songinfo lookup is only meaningful (and only

@@ -22,7 +22,10 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.MusicNote
+import androidx.activity.compose.BackHandler
+import com.example.lmsnowplaying.composable.TrackInfoPanel
 import androidx.compose.material.icons.filled.AllInclusive
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.QueueMusic
@@ -417,10 +420,11 @@ fun PlayerScreen(){
             val idle = System.currentTimeMillis() - maxOf(lastKeyTime, NavState.lastTyped)
             // The browse (☰) panel closes by itself after the same idle time,
             // and focus goes back to the play button.
-            if (NavState.showBrowse || NavState.showQueue) {
+            if (NavState.showBrowse || NavState.showQueue || NavState.showTrackInfo) {
                 if (idle > 15_000) {
                     NavState.showBrowse = false
                     NavState.showQueue = false
+                    NavState.showTrackInfo = false
                     try { playFocusRequester.requestFocus() } catch (_: Exception) { }
                     refocused = true
                 }
@@ -465,12 +469,29 @@ fun PlayerScreen(){
                 Spacer(modifier = Modifier.size(24.dp))
                 Column(verticalArrangement = Arrangement.Center, modifier = Modifier.weight(1f)) {
                     Spacer(modifier = Modifier.size(35.dp))
-                    Text(songName, fontSize = 30.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .basicMarquee(iterations = Int.MAX_VALUE)
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        // Same width as the info button, so the title stays centered
+                        val infoButton = AppConfig.current.showTrackInfoButton
+                        if (infoButton) Spacer(modifier = Modifier.size(40.dp))
+                        Text(songName, fontSize = 30.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier
+                                .weight(1f)
+                                .basicMarquee(iterations = Int.MAX_VALUE)
+                        )
+                        if (infoButton) FocusIconButton(
+                            onClick = { NavState.showTrackInfo = !NavState.showTrackInfo },
+                            size = 32.dp,
+                            modifier = Modifier.padding(start = 8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Info,
+                                contentDescription = "Info",
+                                tint = Color.White.copy(alpha = 0.7f),
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                    }
                     Spacer(modifier = Modifier.size(10.dp))
 
                     val byLabel = stringResource(R.string.now_playing_by_label)
@@ -906,6 +927,16 @@ fun PlayerScreen(){
                 .align(Alignment.BottomEnd)
                 .padding(end = 60.dp, bottom = (screenHeightDp - queueTopDp + 6.dp).coerceAtLeast(0.dp))) {
                 com.example.lmsnowplaying.composable.QueuePanel()
+            }
+        }
+
+        // Technical info of the playing track (ⓘ next to the title); Back closes it
+        if (NavState.showTrackInfo && AppConfig.current.showTrackInfoButton) {
+            BackHandler(enabled = true) { NavState.showTrackInfo = false }
+            Box(modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(end = 60.dp, top = 48.dp)) {
+                TrackInfoPanel(songName)
             }
         }
 

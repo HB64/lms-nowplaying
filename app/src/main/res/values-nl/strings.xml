@@ -24,6 +24,7 @@
     <string name="menu_background_prefix">Achtergrond</string>
     <string name="menu_players_header">Spelers</string>
     <string name="default_player_info">OK kiest de standaardspeler. D-pad rechts toont of verbergt een speler in het ⋮-menu (☑ = zichtbaar); verborgen spelers blijven actief, ze staan alleen niet in de lijst. “Alleen standaardspeler bedienen” beperkt de app tot de standaardspeler.</string>
+    <string name="settings_track_info_button">Trackinfo-knop</string>
     <string name="settings_mymusic_items">Mijn Muziek-items</string>
     <string name="menu_standby_prefix">Stand-by bij afsluiten</string>
     <string name="menu_standby_on">Aan</string>
@@ -45,6 +46,19 @@
     <string name="browse_album_artists">Albumartiesten</string>
     <string name="browse_composers">Composities</string>
     <string name="browse_releases">Releases</string>
+    <string name="info_title">Trackinfo</string>
+    <string name="info_format">Formaat</string>
+    <string name="info_bit_depth">Bitdiepte</string>
+    <string name="info_sample_rate">Samplefrequentie</string>
+    <string name="info_bitrate">Bitrate</string>
+    <string name="info_lossless">Lossless</string>
+    <string name="info_gain_track">Replay gain (nummer)</string>
+    <string name="info_gain_album">Replay gain (album)</string>
+    <string name="info_file_size">Bestandsgrootte</string>
+    <string name="info_tag_version">Tagversie</string>
+    <string name="info_yes">Ja</string>
+    <string name="info_no">Nee</string>
+    <string name="info_none">Geen technische info beschikbaar voor dit nummer</string>
     <string name="sort_by">Sorteren op</string>
     <string name="sort_release">Release</string>
     <string name="sort_artist_release">Artiest, Release</string>

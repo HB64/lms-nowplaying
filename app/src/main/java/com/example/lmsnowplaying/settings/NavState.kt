@@ -59,6 +59,9 @@ object NavState {
     var releasesSort = "artistalbum"
     var releasesDesc = false
 
+    // True while the track info panel (ⓘ next to the title) is showing.
+    var showTrackInfo by mutableStateOf(false)
+
     // True while the Queue panel (button at the bottom right) is showing.
     var showQueue by mutableStateOf(false)
 
