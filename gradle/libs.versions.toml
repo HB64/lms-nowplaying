@@ -46,6 +46,7 @@ material3-icons = { module = "androidx.compose.material:material-icons-extended"
 
 coil = { module = "io.coil-kt:coil", version.ref = "coil" }
 coil-compose = { module = "io.coil-kt:coil-compose", version.ref = "coil" }
+coil-svg = { module = "io.coil-kt:coil-svg", version.ref = "coil" }
 coil-transformations ={ module = "com.github.Commit451:coil-transformations", version.ref = "coil-transformations" }
 
 runtime-livedata = { module = "androidx.compose.runtime:runtime-livedata", version.ref = "runtime-livedata" }
@@ -65,7 +66,7 @@ androidx-tv-compose = ["tv-foundation", "tv-material"]
 okhttp = ["okhttp", "okhttplogging"]
 retrofit =["retrofit", "retrofit-converter"]
 material3 = ["material3", "material3-icons"]
-coil = ["coil", "coil-compose", "coil-transformations"]
+coil = ["coil", "coil-compose", "coil-svg", "coil-transformations"]
 
 
 [plugins]

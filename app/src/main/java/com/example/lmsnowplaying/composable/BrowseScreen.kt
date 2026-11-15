@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.MusicNote
@@ -436,6 +437,12 @@ fun BrowseScreen() {
                         radioPath.add(BrowseItem("", appContext.getString(R.string.browse_radio)))
                         go(BrowseLevel.RADIO)
                     },
+                    onApps = {
+                        // Same levels as Radio; the id "apps" on the first entry tells the list what to load
+                        radioPath.clear()
+                        radioPath.add(BrowseItem("apps", appContext.getString(R.string.browse_apps)))
+                        go(BrowseLevel.RADIO)
+                    },
                     onMix = { go(BrowseLevel.MIX) },
                 )
                 BrowseLevel.MY_MUSIC -> MyMusicList(
@@ -526,7 +533,15 @@ fun BrowseScreen() {
                         go(BrowseLevel.RADIO_ACTIONS)
                     },
                 )
-                BrowseLevel.RADIO_ACTIONS -> actionRadio?.let { FavoriteActions(it, onDone = goBack, plugin = radioCmd) }
+                BrowseLevel.RADIO_ACTIONS -> actionRadio?.let { item ->
+                    FavoriteActions(
+                        item, onDone = goBack, plugin = radioCmd,
+                        onOpen = if (item.openable) ({
+                            goBack()
+                            radioPath.add(BrowseItem(item.id, item.name))
+                        }) else null,
+                    )
+                }
                 BrowseLevel.MIX -> MixPanel()
                 BrowseLevel.FAVORITES -> favPath.lastOrNull()?.let { folder ->
                     FavoritesList(
@@ -698,6 +713,7 @@ fun BrowseScreen() {
 private fun RootList(
     onMyMusic: () -> Unit,
     onRadio: () -> Unit,
+    onApps: () -> Unit,
     onMix: () -> Unit,
 ) {
     val firstFocus = remember { FocusRequester() }
@@ -706,6 +722,7 @@ private fun RootList(
     Column {
         BrowseRow(stringResource(R.string.browse_my_music), onClick = onMyMusic, modifier = Modifier.focusRequester(firstFocus), icon = MyMusicIcon)
         BrowseRow(stringResource(R.string.browse_radio), onClick = onRadio, icon = RadioMenuIcon)
+        BrowseRow(stringResource(R.string.browse_apps), onClick = onApps, icon = Icons.Outlined.Apps)
         BrowseRow(stringResource(R.string.browse_mix), onClick = onMix, icon = MixMenuIcon)
     }
 }
@@ -782,12 +799,13 @@ private fun RadioList(
     onItem: (BrowseItem) -> Unit,
 ) {
     val atRoot = path.size <= 1
+    val apps = path.firstOrNull()?.id == "apps"
     val folderId = path.lastOrNull()?.id ?: ""
     var radios by remember { mutableStateOf<List<RadioEntry>?>(null) }
     var entries by remember(cmd, path.size, folderId) { mutableStateOf<List<FavoriteEntry>?>(null) }
     LaunchedEffect(atRoot, cmd, path.size, folderId) {
         if (atRoot) {
-            if (radios == null) radios = withContext(Dispatchers.IO) { LMS.getRadios() }
+            if (radios == null) radios = withContext(Dispatchers.IO) { if (apps) LMS.getApps() else LMS.getRadios() }
         } else {
             entries = withContext(Dispatchers.IO) { LMS.getRadioItems(cmd, folderId) }
         }
@@ -814,15 +832,28 @@ private fun RadioList(
             val list = radios ?: emptyList()
             items(list.size) { index ->
                 val radio = list[index]
-                BrowseRow(
-                    radio.name,
-                    icon = radioEntryIcon(radio.cmd),
-                    modifier = if (index == 0) Modifier.focusRequester(firstFocus) else Modifier,
-                    onClick = {
-                        if (radio.isSearch) onSearch(radio.cmd, BrowseItem("", radio.name))
-                        else onRadio(radio.cmd, radio.name)
-                    }
-                )
+                val open = {
+                    if (radio.isSearch) onSearch(radio.cmd, BrowseItem("", radio.name))
+                    else onRadio(radio.cmd, radio.name)
+                }
+                if (radio.icon.isNotBlank()) {
+                    ThumbRow(
+                        text = radio.name,
+                        imageUrl = radioImageUrl(radio.icon),
+                        placeholder = Icons.Outlined.Apps,
+                        round = false,
+                        imageLoader = imageLoader,
+                        onClick = { open() },
+                        modifier = if (index == 0) Modifier.focusRequester(firstFocus) else Modifier,
+                    )
+                } else {
+                    BrowseRow(
+                        radio.name,
+                        icon = radioEntryIcon(radio.cmd),
+                        modifier = if (index == 0) Modifier.focusRequester(firstFocus) else Modifier,
+                        onClick = { open() }
+                    )
+                }
             }
         } else {
             val list = entries ?: emptyList()
@@ -850,7 +881,11 @@ private fun RadioEntryRow(
     onFolder: (BrowseItem) -> Unit,
     onItem: (BrowseItem) -> Unit,
 ) {
-    val open = { if (entry.isFolder) onFolder(BrowseItem(entry.id, entry.name)) else onItem(BrowseItem(entry.id, entry.name)) }
+    // A playable item (album, track) opens the play menu even when it has items below it
+    val open = {
+        if (entry.isFolder && !entry.isAudio) onFolder(BrowseItem(entry.id, entry.name))
+        else onItem(BrowseItem(entry.id, entry.name, openable = entry.isFolder))
+    }
     when {
         entry.isSearch -> BrowseRow(entry.name, icon = SearchIcon, modifier = modifier, onClick = { onSearch(entry) })
         entry.icon.isNotBlank() -> ThumbRow(
@@ -1028,7 +1063,7 @@ private fun FavoritesList(
             val entry = list[index]
             ThumbRow(
                 text = entry.name,
-                imageUrl = null,
+                imageUrl = radioImageUrl(entry.icon),
                 placeholder = if (entry.isFolder) Icons.Filled.Folder else Icons.Filled.Star,
                 round = false,
                 imageLoader = imageLoader,
@@ -1044,7 +1079,7 @@ private fun FavoritesList(
 
 // Action menu for one favorite: play now / next / add to the end.
 @Composable
-private fun FavoriteActions(favorite: BrowseItem, onDone: () -> Unit, plugin: String = "favorites") {
+private fun FavoriteActions(favorite: BrowseItem, onDone: () -> Unit, plugin: String = "favorites", onOpen: (() -> Unit)? = null) {
     val context = LocalContext.current.applicationContext
     val scope = rememberCoroutineScope()
     val run: (String, String) -> Unit = { cmd, message ->
@@ -1063,6 +1098,8 @@ private fun FavoriteActions(favorite: BrowseItem, onDone: () -> Unit, plugin: St
             onClick = { run("load", context.getString(R.string.fav_item_playing)) })
         BrowseRow(stringResource(R.string.action_play_next), onClick = { run("insert", context.getString(R.string.fav_item_next)) })
         BrowseRow(stringResource(R.string.action_add_end), onClick = { run("add", context.getString(R.string.fav_item_added)) })
+        // Looks at what is inside (the tracks of an album)
+        if (onOpen != null) BrowseRow(stringResource(R.string.action_browse), onClick = onOpen)
     }
 }
 
@@ -1793,6 +1830,8 @@ internal fun rememberLmsImageLoader(): ImageLoader {
     val context = LocalContext.current
     return remember {
         ImageLoader.Builder(context)
+            // The server serves some icons (Material's service logos) as SVG
+            .components { add(coil.decode.SvgDecoder.Factory()) }
             .okHttpClient {
                 OkHttpClient.Builder()
                     .addInterceptor(BasicAuthInterceptor(AppConfig.current.lmsUsername, AppConfig.current.lmsPassword))

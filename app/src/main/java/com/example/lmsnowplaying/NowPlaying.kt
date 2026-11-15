@@ -490,18 +490,36 @@ fun PlayerScreen(){
                                     .size(22.dp)
                             )
                         } else {
-                            Text(
-                                text = streamService,
-                                color = Color.White,
-                                fontSize = 12.sp,
-                                maxLines = 1,
+                            // The service logo from the server's Material plugin (top right, like Material);
+                            // the name as text when the server has none for this service.
+                            var logo by remember(streamService) { mutableStateOf(0) } // 0 loading, 1 shown, 2 none
+                            val logoLoader = com.example.lmsnowplaying.composable.rememberLmsImageLoader()
+                            val slug = streamService.lowercase().replace(" ", "-")
+                            coil.compose.AsyncImage(
+                                model = "${com.example.lmsnowplaying.settings.AppConfig.current.lmsUrl}/material/svg/$slug?c=fff",
+                                imageLoader = logoLoader,
+                                contentDescription = streamService,
+                                onSuccess = { logo = 1 },
+                                onError = { logo = 2 },
                                 modifier = Modifier
-                                    .align(Alignment.BottomStart)
+                                    .align(Alignment.TopEnd)
                                     .padding(8.dp)
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(Color.Black.copy(alpha = 0.7f))
-                                    .padding(horizontal = 8.dp, vertical = 3.dp)
+                                    .size(28.dp)
                             )
+                            if (logo == 2) {
+                                Text(
+                                    text = streamService,
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    maxLines = 1,
+                                    modifier = Modifier
+                                        .align(Alignment.BottomStart)
+                                        .padding(8.dp)
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(Color.Black.copy(alpha = 0.7f))
+                                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
                         }
                     }
                 }

@@ -39,6 +39,8 @@ data class BrowseItem(
     val subtitle: String = "",
     // For albums: release year; empty when unknown.
     val year: String = "",
+    // For playable plugin items (album, track) that also have items below them
+    val openable: Boolean = false,
 )
 
 // Repeat / shuffle / Don't Stop The Music state of a player.
@@ -82,6 +84,8 @@ data class FavoriteEntry(
     val isFolder: Boolean,
     val icon: String = "",
     val isSearch: Boolean = false,
+    // Plays by itself (a track, an album); may still have items below it
+    val isAudio: Boolean = false,
 )
 
 // An entry of Lyrion's Radio menu: the plugin's command and its display name.
@@ -89,6 +93,8 @@ data class RadioEntry(
     val cmd: String,
     val name: String,
     val isSearch: Boolean = false,
+    // Address of the plugin's icon on the server (apps); empty when there is none
+    val icon: String = "",
 )
 
 // Result of a library search: matching artists, albums and tracks.
@@ -1580,8 +1586,9 @@ object LMS{
                 val o = loop.getJSONObject(it)
                 val id = o.optString("id")
                 val name = o.optString("name")
+                val icon = o.optString("image").ifBlank { o.optString("icon") }
                 if (id.isBlank() || name.isBlank()) null
-                else FavoriteEntry(id, name, o.optInt("hasitems", 0) > 0)
+                else FavoriteEntry(id, name, o.optInt("hasitems", 0) > 0, icon)
             }
         }
     }
@@ -1623,6 +1630,23 @@ object LMS{
         }
     }
 
+    // The apps of the server (YouTube Music, Bandcamp, SoundCloud...): plugins that browse like radio.
+    suspend fun getApps(): List<RadioEntry> = safeCall<List<RadioEntry>>("getApps", emptyList()) {
+        val res = pluginMenu(listOf("apps", 0, 200))
+        // The loop name differs ("appss_loop"), so take the list whose entries have a "cmd"
+        var loop = JSONArray()
+        res?.keys()?.forEach { key ->
+            val arr = res.optJSONArray(key)
+            if (arr != null && arr.length() > 0 && arr.optJSONObject(0)?.has("cmd") == true) loop = arr
+        }
+        (0 until loop.length()).mapNotNull {
+            val o = loop.getJSONObject(it)
+            val cmd = o.optString("cmd")
+            val name = o.optString("name")
+            if (cmd.isBlank() || name.isBlank()) null else RadioEntry(cmd, name, false, o.optString("icon"))
+        }.sortedBy { it.name.lowercase() }
+    }
+
     // One level of a radio plugin. An empty parentId means its top level.
     suspend fun getRadioItems(cmd: String, parentId: String, count: Int = 1000, search: String? = null): List<FavoriteEntry> {
         return safeCall("getRadioItems", emptyList()) {
@@ -1636,7 +1660,7 @@ object LMS{
                 val name = o.optString("name")
                 val icon = o.optString("image").ifBlank { o.optString("icon") }
                 if (id.isBlank() || name.isBlank()) null
-                else FavoriteEntry(id, name, o.optInt("hasitems", 0) > 0, icon, o.optString("type") == "search")
+                else FavoriteEntry(id, name, o.optInt("hasitems", 0) > 0, icon, o.optString("type") == "search", o.optInt("isaudio", 0) > 0)
             }
         }
     }
