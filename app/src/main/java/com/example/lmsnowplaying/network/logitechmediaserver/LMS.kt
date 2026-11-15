@@ -173,6 +173,12 @@ object LMS{
     @Volatile
     var currentTrackId: String = ""
 
+    // One-line technical info of the stream as the player receives it, in Material's order
+    // (bitrate, bit depth, sample rate, replay gain, type). Set by update(), shown by TrackInfoLine.
+    val techLineFlow = kotlinx.coroutines.flow.MutableStateFlow("")
+    private var maxBitrateKey = ""
+    private var maxBitrate = 0
+
     @Volatile
     var players: MutableList<Pair<String, String>> = arrayListOf()
     // Players that are synchronized with each other: one set of MACs per group (2 or more).
@@ -366,7 +372,7 @@ object LMS{
     // replay gain, lossless, size, tag version) as key -> value; only what the server knows.
     suspend fun getTrackTech(trackId: String): Map<String, String> {
         return safeCall("getTrackTech", emptyMap()) {
-            val loop = rpcLoop(listOf("songinfo", 0, 100, "track_id:$trackId", "tags:oTIrYXQfv"), "songinfo_loop")
+            val loop = rpcLoop(listOf("songinfo", 0, 100, "track_id:$trackId", "tags:oTIrYXQfvyg"), "songinfo_loop")
             val m = LinkedHashMap<String, String>()
             for (i in 0 until loop.length()) {
                 val o = loop.getJSONObject(i)
@@ -528,7 +534,7 @@ object LMS{
             // remote sources - internet radio, Spotify/Tidal-style plugins -
             // carry their own cover art; those tracks have no local coverid
             // and no real library track_id to look up via songinfo at all.
-            val reqString = "{\"method\": \"slim.request\", \"params\": [\"$playerMAC\", [\"status\", \"-\",1,\"tags:acly4Ku\"]]}"
+            val reqString = "{\"method\": \"slim.request\", \"params\": [\"$playerMAC\", [\"status\", \"-\",1,\"tags:acly4KuorIT\"]]}"
             val requestBody = reqString.toRequestBody("application/json".toMediaTypeOrNull())
             val res = lmsApi.getCurrentSong(requestBody)
             val jsonData: String? = res.body()?.string()
@@ -556,6 +562,7 @@ object LMS{
                 trackUrl = firstResult.optString("url", "")
                 val id = firstResult.optString("id", "")
                 currentTrackId = id
+                techLineFlow.value = buildTechLine(playerMAC, getObject, firstResult, id)
                 Log.w(TAG, "update: id=\"$id\" title=\"$title\" coverid=\"$coverid\" artwork_url=\"$artworkUrl\"")
 
                 // The extra songinfo lookup is only meaningful (and only
@@ -588,12 +595,59 @@ object LMS{
                 }
 
             } catch (e: JSONException) {
+                techLineFlow.value = ""
                 Log.w(TAG, "update: parsing playlist_loop/songinfo failed: ${e.message}")
                 return@safeCall listOf(title, artist, coverid, portraitId, album, year, artworkUrl, trackUrl)
             }
 
             listOf(title, artist, coverid, portraitId, album, year, artworkUrl, trackUrl)
         }
+    }
+
+    // Tech info line, in Material's order. The base of the status response describes the stream the player
+    // gets (after any transcoding), playlist_loop describes the source file. When transcoding, the line shows
+    // source -> stream, and the stream part only uses base values, so source values (bit depth, bitrate)
+    // never show up for the transcoded stream. Lyrion gives no bitrate for it; for mp3 the player's
+    // maxBitrate setting is what the transcoder uses.
+    // "981kb/s, 16bit, 44.1kHz, -6.88dB, flc": the technical line in Material's order.
+    private fun techJoin(bitrate: String, size: String, rate: String, gain: String, type: String): String {
+        val parts = mutableListOf<String>()
+        val br = if (bitrate.isNotEmpty() && bitrate.all { it.isDigit() }) bitrate + "kb/s" else bitrate.replace("kbps", "kb/s")
+        if (br.length > 1) parts.add(br)
+        size.toIntOrNull()?.takeIf { it > 0 }?.let { parts.add("${it}bit") }
+        rate.toDoubleOrNull()?.takeIf { it > 100 }?.let {
+            val khz = it / 1000.0
+            parts.add((if (khz % 1.0 == 0.0) khz.toInt().toString() else "%.1f".format(java.util.Locale.US, khz)) + "kHz")
+        }
+        gain.toDoubleOrNull()?.takeIf { it > 0.000001 || it < -0.000001 }
+            ?.let { parts.add("%.2fdB".format(java.util.Locale.US, it)) }
+        if (type.isNotEmpty()) parts.add(type)
+        return parts.joinToString(", ")
+    }
+
+    private suspend fun buildTechLine(mac: String, base: JSONObject, track: JSONObject, id: String): String {
+        val transcoded = base.optString("is_transcoded", "").trim() == "1"
+        fun field(key: String): String {
+            val b = base.optString(key, "").trim()
+            return if (transcoded || b.isNotEmpty()) b else track.optString(key, "").trim()
+        }
+        val type = field("type")
+        var bitrate = field("bitrate")
+        if (transcoded && bitrate.isEmpty() && type.equals("mp3", ignoreCase = true)) {
+            val key = "$mac:$id"
+            if (key != maxBitrateKey) {
+                maxBitrate = runCatching { playerPref(mac, "maxBitrate").toIntOrNull() ?: 0 }.getOrDefault(0)
+                maxBitrateKey = key
+            }
+            if (maxBitrate > 0) bitrate = "${maxBitrate}kb/s"
+        }
+        val stream = techJoin(bitrate, field("samplesize"), field("samplerate"), base.optString("replay_gain", ""), type)
+        if (!transcoded) return stream
+        val source = techJoin(
+            track.optString("bitrate", "").trim(), track.optString("samplesize", "").trim(),
+            track.optString("samplerate", "").trim(), "", track.optString("type", "").trim()
+        )
+        return if (source.isEmpty()) stream else "$source \u2192 $stream"
     }
 
     // Fetches the upcoming queue starting at the currently playing track
@@ -1741,6 +1795,71 @@ object LMS{
                 BrowseItem(o.optString("id"), o.optString("album"), o.optString("artwork_track_id"), o.optString("artist"))
             }
         }
+    }
+
+    // Music and Artist Information plugin: the texts the Material skin shows in its info view.
+    // Each function returns empty values when the plugin has nothing (or the call fails).
+    data class ArtistInfo(val bio: String, val portraitId: String)
+
+    // Like the Material skin, the album text is asked by album id when known: a name lookup finds
+    // nothing for compilations and for tracks whose artist differs from the album artist.
+    suspend fun getArtistInfo(artist: String): ArtistInfo = safeCall("getArtistInfo", ArtistInfo("", "")) {
+        val r = rpcPlayer("", listOf("musicartistinfo", "biography", "artist:$artist"))
+        ArtistInfo(r.optString("biography", "").trim(), r.optString("portraitid", ""))
+    }
+
+    suspend fun getAlbumReview(artist: String, album: String, albumId: String = ""): String = safeCall("getAlbumReview", "") {
+        val cmd = if (albumId.isNotBlank()) listOf("musicartistinfo", "albumreview", "album_id:$albumId")
+            else listOf("musicartistinfo", "albumreview", "album:$album", "artist:$artist")
+        rpcPlayer("", cmd).optString("albumreview", "").trim()
+    }
+
+    // Albums of the artist with exactly this name (the name is all we know of the playing artist).
+    suspend fun getArtistAlbums(artist: String): List<BrowseItem> = safeCall<List<BrowseItem>>("getArtistAlbums", emptyList()) {
+        val found = rpcPlayer("", listOf("artists", 0, 20, "search:$artist")).optJSONArray("artists_loop") ?: JSONArray()
+        var id = ""
+        for (i in 0 until found.length()) {
+            val o = found.getJSONObject(i)
+            if (o.optString("artist").equals(artist, ignoreCase = true)) { id = o.optString("id"); break }
+        }
+        if (id.isBlank()) return@safeCall emptyList<BrowseItem>()
+        val loop = rpcPlayer("", listOf("albums", 0, 200, "artist_id:$id", "sort:yearalbum", "tags:lyj")).optJSONArray("albums_loop") ?: JSONArray()
+        val list = mutableListOf<BrowseItem>()
+        for (i in 0 until loop.length()) {
+            val o = loop.getJSONObject(i)
+            list.add(BrowseItem(o.optString("id"), o.optString("album"), o.optString("artwork_track_id"), year = o.optString("year", "")))
+        }
+        list
+    }
+
+    suspend fun getLyrics(artist: String, title: String): String = safeCall("getLyrics", "") {
+        rpcPlayer("", listOf("musicartistinfo", "lyrics", "artist:$artist", "title:$title"))
+            .optString("lyrics", "").trim()
+    }
+
+    // Album id of a library track (tag "e"). Do not add the artist id tag "s" here: on this
+    // server the connection drops on it.
+    suspend fun getAlbumIdOfTrack(trackId: String): String = safeCall("getAlbumIdOfTrack", "") {
+        rpcPlayer("", listOf("titles", 0, 1, "track_id:$trackId", "tags:e"))
+            .optJSONArray("titles_loop")?.optJSONObject(0)?.optString("album_id", "") ?: ""
+    }
+
+    // A track of the album shown in the info view: artist, length and the technical line.
+    data class AlbumTrack(val id: String, val title: String, val trackNum: Int, val artist: String, val seconds: Double, val tech: String)
+
+    suspend fun getAlbumTracks(albumId: String, count: Int = 200): List<AlbumTrack> = safeCall<List<AlbumTrack>>("getAlbumTracks", emptyList()) {
+        val loop = rpcPlayer("", listOf("titles", 0, count, "album_id:$albumId", "sort:tracknum", "tags:tadrTIoY"))
+            .optJSONArray("titles_loop") ?: JSONArray()
+        val list = mutableListOf<AlbumTrack>()
+        for (i in 0 until loop.length()) {
+            val o = loop.getJSONObject(i)
+            list.add(AlbumTrack(
+                o.optString("id"), o.optString("title"), o.optInt("tracknum", 0), o.optString("artist"),
+                o.optDouble("duration", 0.0),
+                techJoin(o.optString("bitrate"), o.optString("samplesize"), o.optString("samplerate"), o.optString("replay_gain"), o.optString("type"))
+            ))
+        }
+        list
     }
 
     suspend fun getTracks(albumId: String, count: Int = 200): List<BrowseTrack> {

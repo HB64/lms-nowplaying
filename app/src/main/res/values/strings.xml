@@ -26,9 +26,6 @@
     <string name="default_player_info">OK picks the default player. D-pad right shows or hides a player in the ⋮ menu (☑ = shown); hidden players stay active, they are just not listed. “Only control default” limits the app to the default player.</string>
     <string name="settings_track_info_button">Track info button</string>
     <string name="settings_track_info">Track info</string>
-    <string name="info_mode_button">Button next to title</string>
-    <string name="info_mode_line">Line under track</string>
-    <string name="info_mode_both">Button and line</string>
     <string name="settings_mymusic_items">My Music items</string>
     <string name="menu_standby_prefix">Standby on exit</string>
     <string name="menu_standby_on">On</string>
@@ -94,6 +91,25 @@
     <string name="browse_favorites">Favorites</string>
     <string name="browse_favorite">Favorite</string>
     <string name="mix_info">The settings of all mix plugins can be changed per player in Lyrion itself.</string>
+    <string name="info_tracks_one">%1$d Track \u2022 %2$s</string>
+    <string name="info_tracks_many">%1$d Tracks \u2022 %2$s</string>
+    <string name="info_play_album">Play whole album</string>
+    <string name="info_albums_one">%d Album</string>
+    <string name="info_albums_many">%d Albums</string>
+    <string name="info_album_next">Album plays next</string>
+    <string name="info_tab_artist">Artist</string>
+    <string name="info_tab_release">Release</string>
+    <string name="info_tab_track">Track</string>
+    <string name="info_details">Details</string>
+    <string name="info_row_artist">Artist</string>
+    <string name="info_row_album">Album</string>
+    <string name="info_row_year">Year</string>
+    <string name="info_row_genre">Genre</string>
+    <string name="info_row_source">Source</string>
+    <string name="info_row_tech">Technical info</string>
+    <string name="info_source_local">Local</string>
+    <string name="info_tab_lyrics">Lyrics</string>
+    <string name="info_overview_none">No relevant information found.</string>
     <string name="common_loading">Loading…</string>
     <string name="common_no_player">No player selected</string>
     <string name="browse_no_genres">No genres found</string>

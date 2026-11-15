@@ -141,7 +141,6 @@ fun SettingsScreen(
     var localPlayerAutoStart by remember { mutableStateOf(initial.localPlayerAutoStart) }
     var localPlayerStopOnExit by remember { mutableStateOf(initial.localPlayerStopOnExit) }
     var showVolumeSlider by remember { mutableStateOf(initial.showVolumeSlider) }
-    var showTrackInfoButton by remember { mutableStateOf(initial.showTrackInfoButton) }
     var showTrackInfoLine by remember { mutableStateOf(initial.showTrackInfoLine) }
     var localPlayerDeviceVolume by remember { mutableStateOf(initial.localPlayerDeviceVolume) }
     var localPlayerFixedVolume by remember { mutableStateOf(initial.localPlayerFixedVolume) }
@@ -238,7 +237,6 @@ fun SettingsScreen(
             localPlayerStopOnExit = localPlayerStopOnExit,
             localPlayerAutoStart = localPlayerAutoStart && localPlayerApp != SettingsRepository.LOCAL_PLAYER_NONE,
             showVolumeSlider = showVolumeSlider,
-            showTrackInfoButton = showTrackInfoButton,
             showTrackInfoLine = showTrackInfoLine,
             localPlayerDeviceVolume = localPlayerDeviceVolume && localPlayerApp != SettingsRepository.LOCAL_PLAYER_NONE,
             localPlayerFixedVolume = localPlayerFixedVolume,
@@ -563,10 +561,7 @@ fun SettingsScreen(
                                     }
                                     8 -> if (hasCancel) { popupIndex = 0; popup = "mymusic" }
                                     9 -> if (hasCancel) {
-                                        // Off -> button -> line -> button and line -> off
-                                        val next = (when { showTrackInfoButton && showTrackInfoLine -> 3; showTrackInfoLine -> 2; showTrackInfoButton -> 1; else -> 0 } + 1) % 4
-                                        showTrackInfoButton = next == 1 || next == 3
-                                        showTrackInfoLine = next == 2 || next == 3
+                                        showTrackInfoLine = !showTrackInfoLine
                                         persist()
                                     }
                                     10 -> if (hasCancel && playerOk()) { popupIndex = 0; popup = "syncmenu" }
@@ -787,12 +782,7 @@ fun SettingsScreen(
                             if (hasCancel) {
                                 SRow("${stringResource(R.string.menu_default_player_prefix)}: ${defaultPlayerName.ifBlank { noneLabel }}", Icons.Filled.Check, highlighted == 7, vPad = rp)
                                 SRow(stringResource(R.string.settings_mymusic_items), null, highlighted == 8, vPad = rp)
-                                SRow("${stringResource(R.string.settings_track_info)}: " + when {
-                                    showTrackInfoButton && showTrackInfoLine -> stringResource(R.string.info_mode_both)
-                                    showTrackInfoButton -> stringResource(R.string.info_mode_button)
-                                    showTrackInfoLine -> stringResource(R.string.info_mode_line)
-                                    else -> offLabel
-                                }, Icons.Outlined.Info, highlighted == 9, vPad = rp)
+                                SRow("${stringResource(R.string.settings_track_info)}: ${if (showTrackInfoLine) onLabel else offLabel}", Icons.Outlined.Info, highlighted == 9, vPad = rp)
                                 SRow(stringResource(R.string.menu_sync), Icons.Outlined.Link, highlighted == 10, dim = !playerOk(), vPad = rp)
                             } else {
                                 SRow(stringResource(R.string.settings_save_and_start), null, highlighted == saveRow, vPad = rp, bold = true)

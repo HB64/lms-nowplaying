@@ -59,8 +59,14 @@ object NavState {
     var releasesSort = "artistalbum"
     var releasesDesc = false
 
-    // True while the track info panel (ⓘ next to the title) is showing.
-    var showTrackInfo by mutableStateOf(false)
+    // Whether the ⋮ menu button / the info button beside it has focus. The info button can only be
+    // reached from the ⋮ button (Left), so D-pad Up from the player buttons still passes the
+    // seek bar and the replace button on its way to the ⋮ menu.
+    var menuFocused by mutableStateOf(false)
+    var infoFocused by mutableStateOf(false)
+
+    // True while the info view (artist, album and lyrics, opened from the toolbar) is showing.
+    var showInfo by mutableStateOf(false)
 
     // True while the Queue panel (button at the bottom right) is showing.
     var showQueue by mutableStateOf(false)

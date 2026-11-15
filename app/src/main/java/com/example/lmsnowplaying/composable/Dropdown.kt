@@ -166,7 +166,7 @@ fun MyUI() {
             modifier = Modifier
                 .padding(top = 2.dp)
                 .focusRequester(menuButtonFocusRequester)
-                .onFocusChanged { menuButtonHasFocus = it.isFocused }
+                .onFocusChanged { menuButtonHasFocus = it.isFocused; NavState.menuFocused = it.isFocused }
         ) {
             Icon(
                 imageVector = Icons.Default.MoreVert,

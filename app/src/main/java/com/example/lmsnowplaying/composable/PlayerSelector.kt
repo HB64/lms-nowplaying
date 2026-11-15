@@ -14,12 +14,15 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.lmsnowplaying.network.logitechmediaserver.LMS
+import com.example.lmsnowplaying.settings.NavState
 
 @Composable
 fun PlayerSelector(pn: String){
@@ -45,6 +48,26 @@ fun PlayerSelector(pn: String){
                 Spacer(Modifier.width(8.dp))
                 Text(text = _playerName, color = Color.White.copy(alpha = 0.7f), fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
             }
+        }
+        // Info view (artist, album, lyrics), just left of the ⋮ menu
+        FocusIconButton(
+            onClick = {
+                NavState.showBrowse = false
+                NavState.showQueue = false
+                NavState.showInfo = !NavState.showInfo
+            },
+            size = 30.dp,
+            modifier = Modifier
+                .padding(start = 8.dp, top = 2.dp)
+                .focusProperties { canFocus = NavState.menuFocused || NavState.infoFocused }
+                .onFocusChanged { NavState.infoFocused = it.isFocused }
+        ) {
+            Icon(
+                imageVector = if (NavState.showInfo) InfoOverviewFilledIcon else InfoOverviewIcon,
+                contentDescription = "Info",
+                tint = Color.LightGray,
+                modifier = Modifier.size(18.dp)
+            )
         }
         MyUI()
     }

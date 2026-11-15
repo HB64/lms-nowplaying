@@ -26,9 +26,6 @@
     <string name="default_player_info">OK kiest de standaardspeler. D-pad rechts toont of verbergt een speler in het ⋮-menu (☑ = zichtbaar); verborgen spelers blijven actief, ze staan alleen niet in de lijst. “Alleen standaardspeler bedienen” beperkt de app tot de standaardspeler.</string>
     <string name="settings_track_info_button">Trackinfo-knop</string>
     <string name="settings_track_info">Trackinfo</string>
-    <string name="info_mode_button">Knop naast titel</string>
-    <string name="info_mode_line">Regel onder track</string>
-    <string name="info_mode_both">Knop en regel</string>
     <string name="settings_mymusic_items">Mijn Muziek-items</string>
     <string name="menu_standby_prefix">Stand-by bij afsluiten</string>
     <string name="menu_standby_on">Aan</string>
@@ -94,6 +91,25 @@
     <string name="browse_favorites">Favorieten</string>
     <string name="browse_favorite">Favoriet</string>
     <string name="mix_info">Van alle mix-plugins kunnen de instellingen per speler in Lyrion zelf gewijzigd worden.</string>
+    <string name="info_tracks_one">%1$d Nummer \u2022 %2$s</string>
+    <string name="info_tracks_many">%1$d Nummers \u2022 %2$s</string>
+    <string name="info_play_album">Hele album afspelen</string>
+    <string name="info_albums_one">%d Album</string>
+    <string name="info_albums_many">%d Albums</string>
+    <string name="info_album_next">Album komt hierna</string>
+    <string name="info_tab_artist">Artiest</string>
+    <string name="info_tab_release">Release</string>
+    <string name="info_tab_track">Nummer</string>
+    <string name="info_details">Gegevens</string>
+    <string name="info_row_artist">Artiest</string>
+    <string name="info_row_album">Album</string>
+    <string name="info_row_year">Jaar</string>
+    <string name="info_row_genre">Genre</string>
+    <string name="info_row_source">Bron</string>
+    <string name="info_row_tech">Technische info</string>
+    <string name="info_source_local">Lokaal</string>
+    <string name="info_tab_lyrics">Songtekst</string>
+    <string name="info_overview_none">Geen relevante informatie gevonden.</string>
     <string name="common_loading">Laden…</string>
     <string name="common_no_player">Geen speler geselecteerd</string>
     <string name="browse_no_genres">Geen genres gevonden</string>

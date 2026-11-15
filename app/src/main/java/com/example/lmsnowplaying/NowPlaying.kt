@@ -25,7 +25,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.MusicNote
 import androidx.activity.compose.BackHandler
-import com.example.lmsnowplaying.composable.TrackInfoPanel
 import androidx.compose.material.icons.filled.AllInclusive
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.QueueMusic
@@ -423,11 +422,12 @@ fun PlayerScreen(){
             val idle = System.currentTimeMillis() - maxOf(lastKeyTime, NavState.lastTyped)
             // The browse (☰) panel closes by itself after the same idle time,
             // and focus goes back to the play button.
-            if (NavState.showBrowse || NavState.showQueue || NavState.showTrackInfo) {
-                if (idle > 15_000) {
+            if (NavState.showBrowse || NavState.showQueue || NavState.showInfo) {
+                // The info view is for reading, so it stays open longer
+                if (idle > (if (NavState.showInfo) 120_000 else 15_000)) {
                     NavState.showBrowse = false
                     NavState.showQueue = false
-                    NavState.showTrackInfo = false
+                    NavState.showInfo = false
                     try { playFocusRequester.requestFocus() } catch (_: Exception) { }
                     refocused = true
                 }
@@ -509,27 +509,12 @@ fun PlayerScreen(){
                 Column(verticalArrangement = Arrangement.Center, modifier = Modifier.weight(1f)) {
                     Spacer(modifier = Modifier.size(35.dp))
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                        // Same width as the info button, so the title stays centered
-                        val infoButton = AppConfig.current.showTrackInfoButton
-                        if (infoButton) Spacer(modifier = Modifier.size(40.dp))
                         Text(songName, fontSize = 30.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1,
                             textAlign = TextAlign.Center,
                             modifier = Modifier
                                 .weight(1f)
                                 .basicMarquee(iterations = Int.MAX_VALUE)
                         )
-                        if (infoButton) FocusIconButton(
-                            onClick = { NavState.showTrackInfo = !NavState.showTrackInfo },
-                            size = 32.dp,
-                            modifier = Modifier.padding(start = 8.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Info,
-                                contentDescription = "Info",
-                                tint = Color.White.copy(alpha = 0.7f),
-                                modifier = Modifier.size(20.dp),
-                            )
-                        }
                     }
                     Spacer(modifier = Modifier.size(10.dp))
 
@@ -912,9 +897,14 @@ fun PlayerScreen(){
 
         }
 
-        // Top-left: opens the library browser (like Material's menu button)
+        // Bottom-left, in line with the player buttons (mirror of the queue button):
+        // opens the library browser (like Material's menu button).
         // When the panel is closed by the user (not by the idle timeout,
         // which sends focus to the play button), focus returns to this button.
+        val queueDensity = LocalDensity.current
+        val queueTopDp = if (controlsCenterYpx >= 0f)
+            with(queueDensity) { controlsCenterYpx.toDp() } - 20.dp
+        else 400.dp
         val browseButtonFocus = remember { FocusRequester() }
         var browseWasOpen by remember { mutableStateOf(false) }
         LaunchedEffect(NavState.showBrowse) {
@@ -927,12 +917,14 @@ fun PlayerScreen(){
         FocusIconButton(
             onClick = {
                 NavState.showQueue = false
+                NavState.showInfo = false
                 NavState.showBrowse = true
             },
             size = 40.dp,
             modifier = Modifier
                 .align(Alignment.TopStart)
-                .padding(start = 80.dp, top = 17.dp)
+                .offset(y = queueTopDp)
+                .padding(start = 80.dp)
                 .focusRequester(browseButtonFocus)
         ) {
             Icon(
@@ -946,13 +938,10 @@ fun PlayerScreen(){
         // Bottom-right: opens the play queue (like Material's queue button)
         // In line with the player buttons (same height) and with the ⋮ menu
         // above (same distance from the right edge).
-        val queueDensity = LocalDensity.current
-        val queueTopDp = if (controlsCenterYpx >= 0f)
-            with(queueDensity) { controlsCenterYpx.toDp() } - 20.dp
-        else 400.dp
         FocusIconButton(
             onClick = {
                 NavState.showBrowse = false
+                NavState.showInfo = false
                 NavState.showQueue = !NavState.showQueue
             },
             size = 40.dp,
@@ -979,22 +968,24 @@ fun PlayerScreen(){
             }
         }
 
-        // Technical info of the playing track (ⓘ next to the title); Back closes it
-        if (NavState.showTrackInfo && AppConfig.current.showTrackInfoButton) {
-            BackHandler(enabled = true) { NavState.showTrackInfo = false }
+        // The browse panel itself, floating above its button
+        if (NavState.showBrowse) {
+            val browseScreenHeightDp = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp
             Box(modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(end = 60.dp, top = 48.dp)) {
-                TrackInfoPanel(songName)
+                .align(Alignment.BottomStart)
+                .padding(start = 80.dp, bottom = (browseScreenHeightDp - queueTopDp + 6.dp).coerceAtLeast(0.dp))) {
+                BrowseScreen()
             }
         }
 
-        // The browse panel itself, floating over Now Playing
-        if (NavState.showBrowse) {
+        // Info view (artist, album, lyrics) over the whole screen, below the toolbar; Back closes it
+        if (NavState.showInfo) {
+            BackHandler(enabled = true) { NavState.showInfo = false }
             Box(modifier = Modifier
                 .align(Alignment.TopStart)
-                .padding(start = 80.dp, top = 48.dp)) {
-                BrowseScreen()
+                .fillMaxSize()
+                .padding(top = 64.dp)) {
+                com.example.lmsnowplaying.composable.InfoOverview(artistName, albumName, songName, albumArtUrl, streamService)
             }
         }
 
