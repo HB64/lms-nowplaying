@@ -2,6 +2,7 @@ package com.example.lmsnowplaying.composable
 
 import com.example.lmsnowplaying.R
 import androidx.compose.ui.res.stringResource
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -10,6 +11,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -19,6 +22,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.MusicNote
+import androidx.compose.material.icons.outlined.SwapHoriz
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -27,6 +32,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -34,6 +40,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -62,11 +69,15 @@ fun QueuePanel() {
     val listState = rememberLazyListState()
     val currentFocus = remember { FocusRequester() }
     val actionFocus = remember { FocusRequester() }
+    val moveFocus = remember { FocusRequester() }
+    // True while the list of players to move the queue to is shown
+    var pickPlayer by remember { mutableStateOf(false) }
+    val context = LocalContext.current.applicationContext
 
     // Read the queue now and keep it fresh while no track is selected
     LaunchedEffect(Unit) {
         while (true) {
-            if (selected == null) queue = withContext(Dispatchers.IO) { LMS.getQueue() }
+            if (selected == null && !pickPlayer) queue = withContext(Dispatchers.IO) { LMS.getQueue() }
             delay(3000)
         }
     }
@@ -84,8 +95,8 @@ fun QueuePanel() {
     }
 
     // Back from the action menu to the list: focus the current track again
-    LaunchedEffect(selected) {
-        if (selected == null) {
+    LaunchedEffect(selected, pickPlayer) {
+        if (selected == null && !pickPlayer) {
             delay(60)
             try { currentFocus.requestFocus() } catch (_: Exception) { }
         } else {
@@ -95,7 +106,7 @@ fun QueuePanel() {
     }
 
     val goBack: () -> Unit = {
-        if (selected != null) selected = null else NavState.showQueue = false
+        if (pickPlayer) pickPlayer = false else if (selected != null) selected = null else NavState.showQueue = false
     }
     BackHandler(enabled = true) { goBack() }
 
@@ -110,6 +121,11 @@ fun QueuePanel() {
                 if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft) {
                     goBack()
                     true
+                } else if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionRight &&
+                    selected == null && !pickPlayer && queue?.tracks?.isNotEmpty() == true) {
+                    // Right on a track: to the "move to" button next to the title
+                    try { moveFocus.requestFocus() } catch (_: Exception) { }
+                    true
                 } else false
             }
             .clip(RoundedCornerShape(12.dp))
@@ -119,15 +135,47 @@ fun QueuePanel() {
         Column {
             val q = queue
             val sel = selected
-            Text(
-                text = sel?.title ?: if (q == null) stringResource(R.string.queue_title) else stringResource(R.string.queue_title_count, q.tracks.size),
-                color = Color.White,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                modifier = Modifier.padding(start = 12.dp, bottom = 8.dp)
-            )
-            if (sel != null) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = if (pickPlayer) stringResource(R.string.queue_move_title) else sel?.title ?: if (q == null) stringResource(R.string.queue_title) else stringResource(R.string.queue_title_count, q.tracks.size),
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    modifier = Modifier.padding(start = 12.dp, bottom = 8.dp).weight(1f)
+                )
+                if (!pickPlayer && sel == null && q != null && q.tracks.isNotEmpty()) {
+                    QueueMoveButton(
+                        text = stringResource(R.string.queue_move_short),
+                        modifier = Modifier.focusRequester(moveFocus),
+                        onBack = { try { currentFocus.requestFocus() } catch (_: Exception) { } },
+                        onClick = { pickPlayer = true },
+                    )
+                }
+            }
+            if (pickPlayer) {
+                val others = LMS.players.filter { it.second != LMS.playerMac }
+                if (others.isEmpty()) {
+                    Text(stringResource(R.string.queue_move_none), color = Color.White.copy(alpha = 0.7f), fontSize = 14.sp, modifier = Modifier.padding(start = 12.dp))
+                }
+                others.forEachIndexed { i, p ->
+                    QueueRow(p.first, false, if (i == 0) Modifier.focusRequester(actionFocus) else Modifier) {
+                        scope.launch {
+                            val ok = withContext(Dispatchers.IO) { LMS.transferQueue(p.second) }
+                            Toast.makeText(
+                                context,
+                                if (ok) context.getString(R.string.queue_moved, p.first) else context.getString(R.string.queue_move_failed),
+                                Toast.LENGTH_LONG
+                            ).show()
+                            if (ok) {
+                                // The queue lives on that player now: follow it
+                                LMS.setPlayer(p.first, p.second)
+                                NavState.showQueue = false
+                            } else pickPlayer = false
+                        }
+                    }
+                }
+            } else if (sel != null) {
                 QueueRow(stringResource(R.string.action_play_now), false, Modifier.focusRequester(actionFocus)) {
                     scope.launch {
                         withContext(Dispatchers.IO) { LMS.jumpTo(LMS.playerMac, sel.absoluteIndex) }
@@ -189,4 +237,28 @@ private fun QueueRow(text: String, current: Boolean, modifier: Modifier, onClick
             .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 10.dp)
     )
+}
+
+// "Move to…" next to the queue title; Down and Left go back to the list (Left would close the panel).
+@Composable
+private fun QueueMoveButton(text: String, modifier: Modifier, onBack: () -> Unit, onClick: () -> Unit) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val focused by interactionSource.collectIsFocusedAsState()
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(if (focused) Color.White.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.08f))
+            .onKeyEvent { e ->
+                if (e.type == KeyEventType.KeyDown && (e.key == Key.DirectionLeft || e.key == Key.DirectionDown)) {
+                    onBack()
+                    true
+                } else false
+            }
+            .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 6.dp)
+    ) {
+        Icon(Icons.Outlined.SwapHoriz, contentDescription = null, tint = Color.White.copy(alpha = 0.9f), modifier = Modifier.size(18.dp))
+        Text(text = text, color = Color.White.copy(alpha = 0.9f), fontSize = 13.sp, maxLines = 1, modifier = Modifier.padding(start = 6.dp))
+    }
 }

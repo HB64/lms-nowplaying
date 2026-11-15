@@ -639,7 +639,7 @@ object LMS{
                 maxBitrate = runCatching { playerPref(mac, "maxBitrate").toIntOrNull() ?: 0 }.getOrDefault(0)
                 maxBitrateKey = key
             }
-            if (maxBitrate > 0) bitrate = "${maxBitrate}kb/s"
+            if (maxBitrate > 0) bitrate = "${maxBitrate}kb/s CBR"
         }
         val stream = techJoin(bitrate, field("samplesize"), field("samplerate"), base.optString("replay_gain", ""), type)
         if (!transcoded) return stream
@@ -1463,16 +1463,17 @@ object LMS{
     }
 
     // The Auto Mix plugin that is switched on, but only while a stream
-    // (internet radio etc.) is playing - that is when a mix has to be
-    // started by hand. Null otherwise (also when only DSTM is on).
+    // (internet radio etc.) is playing or the queue is empty - that is when a mix
+    // has to be started by hand. Null otherwise (also when only DSTM is on).
     suspend fun getStreamMixPlugin(): MixPlugin? {
         val mac = playerMac
         if (mac == "00:00:00:00:00:00") return null
         return safeCall("getStreamMixPlugin", null) {
             val status = rpcPlayer(mac, listOf("status", "-", 1, "tags:"))
-            val item = status.optJSONArray("playlist_loop")?.optJSONObject(0) ?: return@safeCall null
-            val isStream = item.optInt("remote", 0) == 1 || item.optLong("id", 0L) < 0L
-            if (!isStream) return@safeCall null
+            val item = status.optJSONArray("playlist_loop")?.optJSONObject(0)
+            // An empty queue needs a mix started by hand as well
+            val isStream = item != null && (item.optInt("remote", 0) == 1 || item.optLong("id", 0L) < 0L)
+            if (item != null && !isStream) return@safeCall null
             getMixState().on.firstOrNull { it != MixPlugin.DSTM && it != MixPlugin.RANDOMPLAY }
         }
     }
@@ -1842,6 +1843,17 @@ object LMS{
     suspend fun getAlbumIdOfTrack(trackId: String): String = safeCall("getAlbumIdOfTrack", "") {
         rpcPlayer("", listOf("titles", 0, 1, "track_id:$trackId", "tags:e"))
             .optJSONArray("titles_loop")?.optJSONObject(0)?.optString("album_id", "") ?: ""
+    }
+
+    // Moves the queue of the selected player to another player with the Material skin plugin's
+    // "transferqueue" command (it syncs the two players, which copies the queue and the play
+    // position, then clears and switches off the source). The plugin gives no answer we can read,
+    // so success is checked on the target: it must have tracks afterwards.
+    suspend fun transferQueue(toMac: String): Boolean = safeCall("transferQueue", false) {
+        if (playerMac == "00:00:00:00:00:00") return@safeCall false
+        rpcPlayer("", listOf("material-skin", "transferqueue", "from:$playerMac", "to:$toMac", "mode:move"))
+        kotlinx.coroutines.delay(2000)
+        rpcPlayer(toMac, listOf("status", "-", 1)).optInt("playlist_tracks", 0) > 0
     }
 
     // A track of the album shown in the info view: artist, length and the technical line.

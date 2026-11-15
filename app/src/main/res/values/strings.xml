@@ -152,6 +152,12 @@
     <string name="track_added">Track added to queue</string>
     <string name="queue_title">Queue</string>
     <string name="queue_title_count">Queue (%1$d)</string>
+    <string name="queue_move">Move queue to…</string>
+    <string name="queue_move_short">Move to…</string>
+    <string name="queue_move_title">Move queue to</string>
+    <string name="queue_move_none">No other players available</string>
+    <string name="queue_moved">Queue moved to %s</string>
+    <string name="queue_move_failed">Moving the queue failed (the Material skin plugin on the server is needed)</string>
     <string name="queue_remove">Remove from queue</string>
     <string name="queue_empty">The queue is empty</string>
     <string name="replace_via">Next track replaced via %1$s</string>

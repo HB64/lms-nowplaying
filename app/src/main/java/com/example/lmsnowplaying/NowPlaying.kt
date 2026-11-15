@@ -671,7 +671,7 @@ fun PlayerScreen(){
             ) {
                 val toastContext = LocalContext.current.applicationContext
 
-                // Start-mix button: only while a stream plays and an Auto Mix
+                // Start-mix button: only while a stream plays or the queue is empty and an Auto Mix
                 // plugin is on (it doesn't start a mix by itself). The slot is
                 // always reserved (and mirrored on the right) so the row
                 // doesn't shift when the button shows up.

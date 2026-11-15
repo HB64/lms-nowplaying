@@ -152,6 +152,12 @@
     <string name="track_added">Nummer toegevoegd aan wachtrij</string>
     <string name="queue_title">Wachtrij</string>
     <string name="queue_title_count">Wachtrij (%1$d)</string>
+    <string name="queue_move">Wachtrij verplaatsen naar…</string>
+    <string name="queue_move_short">Verplaats naar…</string>
+    <string name="queue_move_title">Wachtrij verplaatsen naar</string>
+    <string name="queue_move_none">Geen andere spelers beschikbaar</string>
+    <string name="queue_moved">Wachtrij verplaatst naar %s</string>
+    <string name="queue_move_failed">Verplaatsen mislukt (de Material-plugin op de server is nodig)</string>
     <string name="queue_remove">Verwijderen uit wachtrij</string>
     <string name="queue_empty">De wachtrij is leeg</string>
     <string name="replace_via">Volgende vervangen via %1$s</string>
