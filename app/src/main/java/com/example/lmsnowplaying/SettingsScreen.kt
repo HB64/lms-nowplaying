@@ -127,6 +127,11 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
 
     var lmsUrl by remember { mutableStateOf(initial.lmsUrl) }
+    // Servers found on the network (null = not searched yet)
+    var lmsFound by remember { mutableStateOf<List<com.example.lmsnowplaying.network.FoundServer>?>(null) }
+    var lmsSearching by remember { mutableStateOf(false) }
+    var jfFound by remember { mutableStateOf<List<com.example.lmsnowplaying.network.FoundServer>?>(null) }
+    var jfSearching by remember { mutableStateOf(false) }
     var lmsUsername by remember { mutableStateOf(initial.lmsUsername) }
     var lmsPassword by remember { mutableStateOf(initial.lmsPassword) }
     var jellyfinUrl by remember { mutableStateOf(initial.jellyfinUrl) }
@@ -806,11 +811,55 @@ fun SettingsScreen(
                     if (isLms) {
                         SectionTitle(stringResource(R.string.settings_lms_section), ServerIcon, MaterialTheme.typography.titleMedium, FontWeight.Bold, Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
                         SettingField(stringResource(R.string.settings_lms_url_label), lmsUrl, { lmsUrl = it }, commitServers)
+                        FocusButton(stringResource(if (lmsSearching) R.string.settings_searching else R.string.settings_search_servers)) {
+                            if (!lmsSearching) {
+                                lmsSearching = true
+                                scope.launch {
+                                    lmsFound = com.example.lmsnowplaying.network.ServerDiscovery.findLyrion(context)
+                                    lmsSearching = false
+                                }
+                            }
+                        }
+                        val foundList = lmsFound
+                        if (foundList != null && !lmsSearching) {
+                            if (foundList.isEmpty()) {
+                                Text(stringResource(R.string.settings_none_found), color = Color.White.copy(alpha = 0.7f), modifier = Modifier.padding(horizontal = 16.dp))
+                            }
+                            foundList.forEach { server ->
+                                FocusRow("${server.name}  (${server.url.removePrefix("http://")})") {
+                                    lmsUrl = server.url
+                                    lmsFound = null
+                                    commitServers()
+                                }
+                            }
+                        }
                         SettingField(stringResource(R.string.settings_lms_username_label), lmsUsername, { lmsUsername = it }, commitServers)
                         SettingField(stringResource(R.string.settings_lms_password_label), lmsPassword, { lmsPassword = it }, commitServers)
                     } else {
                         SectionTitle(stringResource(R.string.settings_jellyfin_section), FilmstripIcon, MaterialTheme.typography.titleMedium, FontWeight.Bold, Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
                         SettingField(stringResource(R.string.settings_jellyfin_url_label), jellyfinUrl, { jellyfinUrl = it }, commitServers)
+                        FocusButton(stringResource(if (jfSearching) R.string.settings_searching else R.string.settings_search_servers)) {
+                            if (!jfSearching) {
+                                jfSearching = true
+                                scope.launch {
+                                    jfFound = com.example.lmsnowplaying.network.ServerDiscovery.findJellyfin(context)
+                                    jfSearching = false
+                                }
+                            }
+                        }
+                        val jfList = jfFound
+                        if (jfList != null && !jfSearching) {
+                            if (jfList.isEmpty()) {
+                                Text(stringResource(R.string.settings_none_found), color = Color.White.copy(alpha = 0.7f), modifier = Modifier.padding(horizontal = 16.dp))
+                            }
+                            jfList.forEach { server ->
+                                FocusRow("${server.name}  (${server.url.removePrefix("http://")})") {
+                                    jellyfinUrl = server.url
+                                    jfFound = null
+                                    commitServers()
+                                }
+                            }
+                        }
                         SettingField(stringResource(R.string.settings_jellyfin_username_label), jellyfinUsername, { jellyfinUsername = it }, commitServers)
                         SettingField(stringResource(R.string.settings_jellyfin_password_label), jellyfinPassword, { jellyfinPassword = it }, commitServers)
                         SettingField(stringResource(R.string.settings_jellyfin_apikey_label), jellyfinApiKey, { jellyfinApiKey = it }, commitServers)
@@ -893,6 +942,26 @@ private fun SettingField(label: String, value: String, onValueChange: (String) -
                 } else false
             }
     )
+}
+
+// A button with a frame: lights up while the D-pad is on it.
+@Composable
+private fun FocusButton(text: String, onClick: () -> Unit) {
+    val source = remember { MutableInteractionSource() }
+    val focused by source.collectIsFocusedAsState()
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (focused) Color.White.copy(alpha = 0.3f) else Color.White.copy(alpha = 0.08f))
+            .border(1.dp, Color.White.copy(alpha = if (focused) 0.9f else 0.5f), RoundedCornerShape(8.dp))
+            .clickable(interactionSource = source, indication = null, onClick = onClick)
+            .padding(vertical = 10.dp)
+    ) {
+        Text(text = text, color = Color.White, fontWeight = FontWeight.Bold)
+    }
 }
 
 // Focusable row (D-pad OK = click) in the same look as the list rows.

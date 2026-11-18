@@ -224,6 +224,9 @@
     <string name="settings_local_player_section">Lokale speler op dit apparaat</string>
     <string name="settings_local_player_autostart">Lokale speler starten als LMSNP start</string>
     <string name="settings_not_set">Niet ingesteld</string>
+    <string name="settings_search_servers">Zoek servers op het netwerk</string>
+    <string name="settings_searching">Zoeken…</string>
+    <string name="settings_none_found">Geen server gevonden (die moet op hetzelfde netwerk zitten)</string>
     <string name="settings_done">Klaar</string>
     <string name="menu_seek_step_prefix">Spoelstap</string>
     <string name="menu_local_player_stop">stoppen bij afsluiten</string>

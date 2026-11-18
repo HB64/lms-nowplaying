@@ -224,6 +224,9 @@
     <string name="settings_local_player_section">Local player on this device</string>
     <string name="settings_local_player_autostart">Start the local player when LMSNP starts</string>
     <string name="settings_not_set">Not set</string>
+    <string name="settings_search_servers">Search for servers on the network</string>
+    <string name="settings_searching">Searching…</string>
+    <string name="settings_none_found">No server found (it must be on the same network)</string>
     <string name="settings_done">Done</string>
     <string name="menu_seek_step_prefix">Seek step</string>
     <string name="menu_local_player_stop">stop on exit</string>
