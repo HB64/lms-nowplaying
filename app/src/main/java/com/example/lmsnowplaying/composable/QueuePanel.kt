@@ -7,6 +7,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Box
@@ -65,11 +66,15 @@ import kotlinx.coroutines.withContext
 fun QueuePanel() {
     var queue by remember { mutableStateOf<QueueList?>(null) }
     var selected by remember { mutableStateOf<QueueTrack?>(null) }
+    // The track whose menu was opened last: the list comes back on it (otherwise on the playing track)
+    var lastOpened by remember { mutableStateOf<Int?>(null) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     val currentFocus = remember { FocusRequester() }
     val actionFocus = remember { FocusRequester() }
     val moveFocus = remember { FocusRequester() }
+    // With an empty queue nothing else can hold the focus; without it the keys leave the panel
+    val emptyFocus = remember { FocusRequester() }
     // True while the list of players to move the queue to is shown
     var pickPlayer by remember { mutableStateOf(false) }
     val context = LocalContext.current.applicationContext
@@ -98,6 +103,14 @@ fun QueuePanel() {
     LaunchedEffect(selected, pickPlayer) {
         if (selected == null && !pickPlayer) {
             delay(60)
+            val q = queue
+            val idx = q?.tracks?.indexOfFirst { it.absoluteIndex == (lastOpened ?: q.currentIndex) } ?: -1
+            if (idx >= 0) {
+                val first = listState.firstVisibleItemIndex
+                val shown = listState.layoutInfo.visibleItemsInfo.size.coerceAtLeast(1)
+                if (idx < first || idx > first + shown - 1) listState.scrollToItem((idx - 1).coerceAtLeast(0))
+                delay(60)
+            }
             try { currentFocus.requestFocus() } catch (_: Exception) { }
         } else {
             delay(60)
@@ -145,11 +158,39 @@ fun QueuePanel() {
                     modifier = Modifier.padding(start = 12.dp, bottom = 8.dp).weight(1f)
                 )
                 if (!pickPlayer && sel == null && q != null && q.tracks.isNotEmpty()) {
-                    QueueMoveButton(
-                        text = stringResource(R.string.queue_move_short),
-                        modifier = Modifier.focusRequester(moveFocus),
-                        onBack = { try { currentFocus.requestFocus() } catch (_: Exception) { } },
-                        onClick = { pickPlayer = true },
+                    // Icons for the whole queue; Left and Down go back to the list (Left would close the panel)
+                    IconActionRow(
+                        listOf(
+                            Triple(ActionMoveIcon, stringResource(R.string.queue_move_short), { pickPlayer = true; Unit }),
+                            Triple(ActionDuplicateIcon, stringResource(R.string.queue_dedupe), {
+                                scope.launch {
+                                    val removed = withContext(Dispatchers.IO) { LMS.removeDuplicates() }
+                                    queue = withContext(Dispatchers.IO) { LMS.getQueue() }
+                                    val text = if (removed <= 0) context.getString(R.string.queue_dedupe_none)
+                                    else context.getString(R.string.queue_dedupe_done, removed)
+                                    Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
+                                }
+                                Unit
+                            }),
+                            Triple(ActionClearQueueIcon, stringResource(R.string.queue_clear), {
+                                scope.launch {
+                                    withContext(Dispatchers.IO) { LMS.clearQueue() }
+                                    // Nothing left to do in an empty queue: the panel closes
+                                    NavState.showQueue = false
+                                }
+                                Unit
+                            }),
+                        ),
+                        moveFocus,
+                        buttonSize = 36.dp,
+                        iconSize = 20.dp,
+                        modifier = Modifier.padding(bottom = 4.dp).onKeyEvent { e ->
+                            if (e.type == KeyEventType.KeyDown && (e.key == Key.DirectionLeft || e.key == Key.DirectionDown)) {
+                                try { currentFocus.requestFocus() } catch (_: Exception) { }
+                                true
+                            } else false
+                        },
+                        wrapLeft = false,
                     )
                 }
             }
@@ -176,24 +217,43 @@ fun QueuePanel() {
                     }
                 }
             } else if (sel != null) {
-                QueueRow(stringResource(R.string.action_play_now), false, Modifier.focusRequester(actionFocus)) {
-                    scope.launch {
-                        withContext(Dispatchers.IO) { LMS.jumpTo(LMS.playerMac, sel.absoluteIndex) }
-                        selected = null
-                        queue = withContext(Dispatchers.IO) { LMS.getQueue() }
-                    }
-                }
-                QueueRow(stringResource(R.string.queue_remove), false, Modifier) {
-                    scope.launch {
-                        withContext(Dispatchers.IO) { LMS.removeFromQueue(sel.absoluteIndex) }
-                        selected = null
-                        queue = withContext(Dispatchers.IO) { LMS.getQueue() }
-                    }
-                }
+                // Icons side by side: play this track now, remove it from the queue
+                IconActionRow(
+                    listOf(
+                        Triple(ActionPlayIcon, stringResource(R.string.action_play_now), {
+                            lastOpened = null
+                            scope.launch {
+                                withContext(Dispatchers.IO) { LMS.jumpTo(LMS.playerMac, sel.absoluteIndex) }
+                                selected = null
+                                queue = withContext(Dispatchers.IO) { LMS.getQueue() }
+                            }
+                            Unit
+                        }),
+                        Triple(ActionDeleteIcon, stringResource(R.string.queue_remove), {
+                            lastOpened = null
+                            scope.launch {
+                                withContext(Dispatchers.IO) { LMS.removeFromQueue(sel.absoluteIndex) }
+                                selected = null
+                                queue = withContext(Dispatchers.IO) { LMS.getQueue() }
+                            }
+                            Unit
+                        }),
+                    ),
+                    actionFocus,
+                    buttonSize = 40.dp,
+                    iconSize = 22.dp,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    wrapLeft = false,
+                )
             } else if (q == null) {
                 Text(stringResource(R.string.common_loading), color = Color.White.copy(alpha = 0.7f), fontSize = 14.sp, modifier = Modifier.padding(start = 12.dp))
             } else if (q.tracks.isEmpty()) {
-                Text(stringResource(R.string.queue_empty), color = Color.White.copy(alpha = 0.7f), fontSize = 14.sp, modifier = Modifier.padding(start = 12.dp))
+                LaunchedEffect(Unit) {
+                    delay(60)
+                    try { emptyFocus.requestFocus() } catch (_: Exception) { }
+                }
+                Text(stringResource(R.string.queue_empty), color = Color.White.copy(alpha = 0.7f), fontSize = 14.sp,
+                    modifier = Modifier.padding(start = 12.dp).focusRequester(emptyFocus).focusable())
             } else {
                 val imageLoader = rememberLmsImageLoader()
                 HintLazyColumn(state = listState) {
@@ -208,8 +268,8 @@ fun QueuePanel() {
                             placeholder = Icons.Outlined.MusicNote,
                             round = false,
                             imageLoader = imageLoader,
-                            onClick = { selected = track },
-                            modifier = if (isCurrent) Modifier.focusRequester(currentFocus) else Modifier,
+                            onClick = { lastOpened = track.absoluteIndex; selected = track },
+                            modifier = if (track.absoluteIndex == (lastOpened ?: q.currentIndex)) Modifier.focusRequester(currentFocus) else Modifier,
                             bold = isCurrent,
                         )
                     }

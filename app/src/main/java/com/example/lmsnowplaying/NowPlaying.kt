@@ -271,6 +271,20 @@ fun PlayerScreen(){
                     // call hiccuping during a library rescan) would leave the
                     // cover/backdrop permanently blank until the next track,
                     // since it would never be retried.
+                    // The queue was emptied: nothing is playing, so the screen is cleared too
+                    if (_songName == "" && LMS.queueEmpty) {
+                        currentSong = ""
+                        songName = ""
+                        artistName = ""
+                        albumName = ""
+                        albumYear = ""
+                        albumArtUrl = ""
+                        streamService = ""
+                        lmsArtUrl = ""
+                        artistDefaultArtUrl = ""
+                        jellyfinArtUrl = ""
+                        return@launch
+                    }
                     if (_songName == "" || (_songName == currentSong && albumArtUrl.isNotEmpty())) return@launch
                     currentSong = _songName
                     songName = _songName
@@ -811,7 +825,7 @@ fun PlayerScreen(){
                 }
 
                 FocusIconButton(
-                    size = 60.dp,
+                    size = 52.dp,
                     modifier = Modifier
                         .focusRequester(playFocusRequester)
                         .onFocusChanged { playHasFocus = it.isFocused },

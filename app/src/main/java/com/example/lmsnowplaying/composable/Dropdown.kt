@@ -215,24 +215,35 @@ fun MyUI() {
             // Top level: "Players…" (opens the player list), Standby, local player
             // (if any), Settings. The long player list is only shown after OK on the
             // first row, so it never sits between the other rows.
-            val hasPlayersRow = listCount > 0
-            val rowOffset = if (hasPlayersRow) 1 else 0
+            val hasPlayersRow = data.isNotEmpty()
+            // Default player and "only control default": two rows below the player
+            // list (not between the players), same behaviour as in Settings.
+            val defaultMac = AppConfig.current.defaultPlayerMac
+            val hasDefaultRow = data.isNotEmpty() || defaultMac.isNotBlank()
+            val hasOnlyRow = defaultMac.isNotBlank()
+            var rowCursor = 0
+            val playersRowIndex = if (hasPlayersRow) rowCursor++ else -1
+            val standbyRowIndex = rowCursor++
+            val localRowIndex = if (hasLocal) rowCursor++ else -1
+            val settingsRowIndex = rowCursor++
+            val totalItems = rowCursor
             var playersMode by remember { mutableStateOf(false) }
+            // true: the list is the choice of the default player (with "None" on top)
+            var pickDefault by remember { mutableStateOf(false) }
             var playerIndex by remember { mutableStateOf(0) }
             var highlightedIndex by remember {
-                mutableStateOf(if (returningFromSettings) rowOffset + 1 + (if (hasLocal) 1 else 0) else 0)
+                mutableStateOf(if (returningFromSettings) settingsRowIndex else 0)
             }
             var menuHasFocus by remember { mutableStateOf(false) }
-            val totalItems = rowOffset + 2 + (if (hasLocal) 1 else 0)
-            val playersRowIndex = if (hasPlayersRow) 0 else -1
-            val standbyRowIndex = rowOffset
-            val localRowIndex = if (hasLocal) rowOffset + 1 else -1
-            val settingsRowIndex = totalItems - 1
+            val noneLabel = stringResource(R.string.menu_local_player_none)
+            val shownList: List<Pair<String, String>> =
+                if (pickDefault) listOf(noneLabel to "") + data.toList() else if (onlyDefault) emptyList() else data.toList()
+            val listSize = shownList.size
             val menuFocusRequester = remember { FocusRequester() }
             // The player list scrolls inside a limited height.
             val playerListState = rememberLazyListState()
             LaunchedEffect(playerIndex, playersMode) {
-                if (playersMode && playerIndex in 0 until listCount) {
+                if (playersMode && playerIndex in 0 until listSize) {
                     val info = playerListState.layoutInfo
                     val first = playerListState.firstVisibleItemIndex
                     val visible = info.visibleItemsInfo.size.coerceAtLeast(1)
@@ -291,20 +302,57 @@ fun MyUI() {
                         if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
                         lastMenuKey = System.currentTimeMillis()
                         if (playersMode) {
-                            val n = data.size
-                            if (n == 0) { playersMode = false; return@onKeyEvent true }
+                            val listN = shownList.size
+                            // The rows below the list: default player, only control default
+                            val extras = if (pickDefault) 0 else (if (hasDefaultRow) 1 else 0) + (if (hasOnlyRow) 1 else 0)
+                            val n = listN + extras
+                            if (n == 0) { playersMode = false; pickDefault = false; return@onKeyEvent true }
                             when (event.key) {
                                 Key.DirectionDown -> playerIndex = (playerIndex + 1) % n
                                 Key.DirectionUp -> playerIndex = (playerIndex - 1 + n) % n
                                 Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
-                                    val itemValue = data.getOrNull(playerIndex)
-                                    if (itemValue != null) {
+                                    val itemValue = shownList.getOrNull(playerIndex)
+                                    if (playerIndex >= listN) {
+                                        if (playerIndex == listN) {
+                                            pickDefault = true
+                                            playerIndex = if (defaultMac.isBlank()) 0 else (data.indexOfFirst { it.second == defaultMac } + 1).coerceAtLeast(0)
+                                        } else {
+                                            val newValue = !AppConfig.current.onlyControlDefault
+                                            Toast.makeText(contextForToast, "${contextForToast.getString(R.string.menu_only_control_default)}: ${contextForToast.getString(if (newValue) R.string.menu_standby_on else R.string.menu_standby_off)}", Toast.LENGTH_SHORT).show()
+                                            // Effective at once (so the menu shows it), the save follows
+                                            AppConfig.update(AppConfig.current.copy(onlyControlDefault = newValue))
+                                            CoroutineScope(Dispatchers.IO).launch {
+                                                val current = SettingsRepository.get(contextForToast)
+                                                SettingsRepository.save(contextForToast, current.copy(onlyControlDefault = newValue))
+                                            }
+                                            // The menu stays open; the highlight stays on this row
+                                            playerIndex = (if (newValue) 0 else data.size) + 1
+                                        }
+                                    } else if (itemValue != null && pickDefault) {
+                                        val (name, mac) = itemValue
+                                        Toast.makeText(contextForToast, "${contextForToast.getString(R.string.menu_default_player_prefix)}: ${name}", Toast.LENGTH_SHORT).show()
+                                        val newName = if (mac.isEmpty()) "" else name
+                                        val onlyNow = AppConfig.current.onlyControlDefault && mac.isNotEmpty()
+                                        AppConfig.update(AppConfig.current.copy(defaultPlayerName = newName, defaultPlayerMac = mac, onlyControlDefault = onlyNow))
+                                        CoroutineScope(Dispatchers.IO).launch {
+                                            val current = SettingsRepository.get(contextForToast)
+                                            SettingsRepository.save(contextForToast, current.copy(
+                                                defaultPlayerName = newName,
+                                                defaultPlayerMac = mac,
+                                                onlyControlDefault = onlyNow,
+                                            ))
+                                        }
+                                        // Back to the player list, on the "Default player" row
+                                        pickDefault = false
+                                        playerIndex = (if (onlyNow) 0 else data.size)
+                                    } else if (itemValue != null) {
                                         Toast.makeText(contextForToast, " Connected to: ${itemValue.first}", Toast.LENGTH_SHORT).show()
                                         LMS.setPlayer(itemValue.first, itemValue.second)
-                                        expanded = false
+                                        // The list stays open: Left or Back closes it
                                     }
                                 }
-                                Key.Back, Key.DirectionLeft, Key.DirectionRight -> playersMode = false
+                                Key.Back, Key.DirectionLeft, Key.DirectionRight ->
+                                    if (pickDefault) { pickDefault = false; playerIndex = 0 } else playersMode = false
                                 else -> {}
                             }
                             return@onKeyEvent true
@@ -354,11 +402,11 @@ fun MyUI() {
                 if (playersMode) {
                 // Only when the list scrolls: a header showing where you are in it,
                 // and a line below it, so it is clear the list scrolls on its own.
-                val listScrolls = listCount > PLAYER_ROWS_VISIBLE
+                val listScrolls = listSize > PLAYER_ROWS_VISIBLE
                 if (listScrolls) {
-                    val position = if (playerIndex in 0 until listCount) "${playerIndex + 1}/$listCount" else "$listCount"
+                    val position = if (playerIndex in 0 until listSize) "${playerIndex + 1}/$listSize" else "$listSize"
                     Text(
-                        text = "${stringResource(R.string.menu_players_header)} ($position)",
+                        text = "${stringResource(if (pickDefault) R.string.menu_default_player_prefix else R.string.menu_players_header)} ($position)",
                         color = Color.White.copy(alpha = 0.6f),
                         fontSize = 12.sp,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
@@ -387,7 +435,7 @@ fun MyUI() {
                             }
                         }
                 ) {
-                    itemsIndexed(if (onlyDefault) emptyList() else data.toList()) { itemIndex, itemValue ->
+                    itemsIndexed(shownList) { itemIndex, itemValue ->
                         val models = LMS.playerModels[itemValue.second]
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -404,7 +452,7 @@ fun MyUI() {
                                 modifier = Modifier.size(18.dp)
                             )
                             Text(
-                                text = itemValue.first,
+                                text = if (pickDefault) (if (itemValue.second == defaultMac) "●  " else "○  ") + itemValue.first else itemValue.first,
                                 color = Color.White,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -427,6 +475,22 @@ fun MyUI() {
 
                 if (listScrolls) {
                     Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.3f)))
+                }
+                if (!pickDefault) {
+                    if (hasDefaultRow) {
+                        MenuRow(
+                            text = "${stringResource(R.string.menu_default_player_prefix)}: ${AppConfig.current.defaultPlayerName.ifBlank { noneLabel }}",
+                            icon = null,
+                            highlighted = playerIndex == listSize
+                        )
+                    }
+                    if (hasOnlyRow) {
+                        MenuRow(
+                            text = "${stringResource(R.string.menu_only_control_default)}: ${stringResource(if (AppConfig.current.onlyControlDefault) R.string.menu_standby_on else R.string.menu_standby_off)}",
+                            icon = null,
+                            highlighted = playerIndex == listSize + 1
+                        )
+                    }
                 }
                 return@Column
                 }

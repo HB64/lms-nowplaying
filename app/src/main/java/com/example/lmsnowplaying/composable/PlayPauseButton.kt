@@ -24,12 +24,12 @@ fun PlayPauseButton(playing: Boolean){
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
-            .size(52.dp)
+            .size(44.dp)
             .clip(CircleShape)
             .background(Color.White)
     ) {
         Icon(
-            modifier = Modifier.size(32.dp),
+            modifier = Modifier.size(26.dp),
             tint = Color.Black.copy(alpha = 0.85f),
             imageVector = if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
             contentDescription = "Play Pause Button",

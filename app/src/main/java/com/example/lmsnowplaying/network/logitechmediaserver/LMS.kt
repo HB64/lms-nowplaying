@@ -41,7 +41,17 @@ data class BrowseItem(
     val year: String = "",
     // For playable plugin items (album, track) that also have items below them
     val openable: Boolean = false,
+    // For albums of a streaming service: its name in lower case ("qobuz", "deezer"); empty for local albums.
+    val service: String = "",
 )
+
+// The streaming service of an album, from the prefix of its external id ("qobuz:album:123" -> "qobuz").
+fun serviceOfExtId(extId: String): String {
+    val parts = extId.split(':')
+    if (parts.size < 3 || parts[1] != "album") return ""
+    val prefix = parts[0].lowercase()
+    return if (prefix.length in 3..20 && prefix.all { it.isLetter() }) prefix else ""
+}
 
 // Repeat / shuffle / Don't Stop The Music state of a player.
 // repeat: 0 off, 1 song, 2 queue; shuffle: 0 off, 1 songs, 2 albums;
@@ -533,7 +543,11 @@ object LMS{
         }
     }
 
+    // True when the last status answer said the queue has no tracks at all (as opposed to a failed call).
+    @Volatile var queueEmpty: Boolean = false
+
     suspend fun update(playerMAC: String): List<String> {
+        queueEmpty = false
         return safeCall("update", listOf("", "", "", "", "", "", "", "")) {
             // "tags:acly4Ku" asks for artist/coverid/album/year plus "K"
             // (artwork_url) directly on the status call. artwork_url is how
@@ -546,6 +560,7 @@ object LMS{
             val jsonData: String? = res.body()?.string()
             val obj = JSONObject(jsonData)
             val getObject = obj.getJSONObject("result")
+            queueEmpty = getObject.optInt("playlist_tracks", -1) == 0
 
             var title = ""
             var artist = ""
@@ -618,7 +633,7 @@ object LMS{
     // "981kb/s, 16bit, 44.1kHz, -6.88dB, flc": the technical line in Material's order.
     private fun techJoin(bitrate: String, size: String, rate: String, gain: String, type: String): String {
         val parts = mutableListOf<String>()
-        val br = if (bitrate.isNotEmpty() && bitrate.all { it.isDigit() }) bitrate + "kb/s" else bitrate.replace("kbps", "kb/s")
+        val br = if (bitrate.isNotEmpty() && bitrate.all { it.isDigit() }) bitrate + "kb/s" else bitrate.replace("kbps", "kb/s").replace(Regex("^(\\d+)k$"), "$1kb/s")
         if (br.length > 1) parts.add(br)
         size.toIntOrNull()?.takeIf { it > 0 }?.let { parts.add("${it}bit") }
         rate.toDoubleOrNull()?.takeIf { it > 100 }?.let {
@@ -627,7 +642,9 @@ object LMS{
         }
         gain.toDoubleOrNull()?.takeIf { it > 0.000001 || it < -0.000001 }
             ?.let { parts.add("%.2fdB".format(java.util.Locale.US, it)) }
-        if (type.isNotEmpty()) parts.add(type)
+        // "AAC (SoundCloud)" -> "aac": the service is already shown as the badge
+        val shortType = type.replace(Regex("\\s*\\(.*\\)\\s*$"), "").let { if (it != type) it.lowercase() else it }
+        if (shortType.isNotEmpty()) parts.add(shortType)
         return parts.joinToString(", ")
     }
 
@@ -1453,6 +1470,38 @@ object LMS{
         safeCall("removeFromQueue", Unit) { rpcPlayer(mac, listOf("playlist", "delete", index)); Unit }
     }
 
+    // Removes repeated tracks (same file, or same title + artist + album) from the queue; the first one stays,
+    // the playing track is never removed. Returns how many were removed, -1 when it failed.
+    suspend fun removeDuplicates(): Int {
+        val mac = playerMac
+        if (mac == "00:00:00:00:00:00") return -1
+        return safeCall("removeDuplicates", -1) {
+            val status = rpcPlayer(mac, listOf("status", 0, 1000, "tags:alu"))
+            val current = status.optInt("playlist_cur_index", -1)
+            val loop = status.optJSONArray("playlist_loop") ?: JSONArray()
+            val seen = HashSet<String>()
+            val doomed = ArrayList<Int>()
+            for (i in 0 until loop.length()) {
+                val o = loop.getJSONObject(i)
+                val index = o.optInt("playlist index", i)
+                val url = o.optString("url", "")
+                val key = if (url.isNotEmpty()) url
+                else (o.optString("title", "") + "|" + o.optString("artist", "") + "|" + o.optString("album", "")).lowercase()
+                if (!seen.add(key) && index != current) doomed.add(index)
+            }
+            // From the back, so the positions of the others stay valid
+            doomed.sortedDescending().forEach { rpcPlayer(mac, listOf("playlist", "delete", it)) }
+            doomed.size
+        }
+    }
+
+    // Empties the whole queue (this also stops the playback).
+    suspend fun clearQueue(): Boolean {
+        val mac = playerMac
+        if (mac == "00:00:00:00:00:00") return false
+        return safeCall("clearQueue", false) { rpcPlayer(mac, listOf("playlist", "clear")); true }
+    }
+
     // Whether "replace next track" makes sense right now: not while a stream
     // plays, and not while a batch runs (the same rule the Auto Mix plugins
     // use: more than 2 tracks left after the current position = a batch).
@@ -1689,6 +1738,91 @@ object LMS{
         }
     }
 
+    // MusicIP plugin (musicip moods / musicip mix): both need a player. The size of a mix
+    // follows the player's own MusicIP settings. Empty when the plugin or MusicIP isn't there.
+    suspend fun getMusicIpMoods(): List<String> {
+        val mac = playerMac
+        if (mac == "00:00:00:00:00:00") return emptyList()
+        return safeCall("getMusicIpMoods", emptyList()) {
+            val loop = rpcPlayer(mac, listOf("musicip", "moods")).optJSONArray("titles_loop") ?: JSONArray()
+            (0 until loop.length()).map { loop.getJSONObject(it).optString("name") }.filter { it.isNotBlank() }
+        }
+    }
+
+    // The player's own MusicIP settings (plugin.musicip). type and rejectType: 0 tracks, 1 minutes, 2 MB.
+    // filter is the name of the MusicIP filter ("" or "0" = none). Null when they cannot be read.
+    data class MusicIpSettings(
+        val size: Int, val type: Int, val style: Int, val variety: Int, val genre: Int,
+        val rejectSize: Int, val rejectType: Int, val filter: String,
+    )
+
+    suspend fun getMusicIpSettings(): MusicIpSettings? {
+        val mac = playerMac
+        if (mac == "00:00:00:00:00:00") return null
+        return safeCall<MusicIpSettings?>("getMusicIpSettings", null) {
+            suspend fun pref(name: String) = playerPref(mac, "plugin.musicip:$name")
+            val size = pref("mix_size")
+            val type = pref("mix_type")
+            if (size.isBlank() && type.isBlank()) null
+            else MusicIpSettings(
+                size = size.toIntOrNull() ?: 12,
+                type = type.toIntOrNull() ?: 0,
+                style = pref("mix_style").toIntOrNull() ?: 20,
+                variety = pref("mix_variety").toIntOrNull() ?: 0,
+                genre = pref("mix_genre").toIntOrNull() ?: 0,
+                rejectSize = pref("reject_size").toIntOrNull() ?: 12,
+                rejectType = pref("reject_type").toIntOrNull() ?: 0,
+                filter = pref("mix_filter"),
+            )
+        }
+    }
+
+    // The MusicIP filters, asked from MusicIP itself (its /api/filters), at the address in the plugin's
+    // settings; localhost there means the Lyrion server. Null when MusicIP cannot be reached.
+    var musicIpFiltersAddress: String = ""
+    suspend fun getMusicIpFilters(): List<String>? = safeCall<List<String>?>("getMusicIpFilters", null) {
+        val host0 = rpcPlayer("", listOf("pref", "plugin.musicip:host", "?")).optString("_p2", "").trim()
+        val port = rpcPlayer("", listOf("pref", "plugin.musicip:port", "?")).optString("_p2", "").trim().ifBlank { "10002" }
+        val lmsHost = com.example.lmsnowplaying.settings.AppConfig.current.lmsUrl.substringAfter("://").substringBefore("/").substringBefore(":")
+        val host = if (host0.isBlank() || host0 == "localhost" || host0 == "127.0.0.1" || host0 == "::1") lmsHost else host0
+        musicIpFiltersAddress = "$host:$port"
+        val client = okhttp3.OkHttpClient.Builder().callTimeout(5, java.util.concurrent.TimeUnit.SECONDS).build()
+        val request = okhttp3.Request.Builder().url("http://$host:$port/api/filters").build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) return@safeCall null
+            response.body?.string().orEmpty().lines().map { it.trim() }.filter { it.isNotEmpty() }
+        }
+    }
+
+    suspend fun setMusicIpPref(name: String, value: Any) {
+        val mac = playerMac
+        if (mac == "00:00:00:00:00:00") return
+        safeCall("setMusicIpPref($name)", Unit) { rpcPlayer(mac, listOf("playerpref", "plugin.musicip:$name", value)); Unit }
+    }
+
+    suspend fun getMusicIpMix(mood: String): List<Pair<BrowseTrack, String>> {
+        val mac = playerMac
+        if (mac == "00:00:00:00:00:00") return emptyList()
+        return safeCall("getMusicIpMix", emptyList()) {
+            val loop = rpcPlayer(mac, listOf("musicip", "mix", "mood:$mood", "tags:alc")).optJSONArray("titles_loop") ?: JSONArray()
+            (0 until loop.length()).map {
+                val o = loop.getJSONObject(it)
+                BrowseTrack(o.optString("id"), o.optString("title"), it + 1, o.optString("coverid")) to
+                    listOf(o.optString("artist"), o.optString("album")).filter { s -> s.isNotBlank() }.joinToString(" · ")
+            }
+        }
+    }
+
+    // Plays, inserts or adds several tracks at once.
+    suspend fun playTrackIds(cmd: String, ids: List<String>): Boolean {
+        if (playerMac == "00:00:00:00:00:00" || ids.isEmpty()) return false
+        return safeCall("playTrackIds($cmd)", false) {
+            if (cmd == "load") power(true)
+            rpcPlayer(playerMac, listOf("playlistcontrol", "cmd:$cmd", "track_id:${ids.joinToString(",")}"))
+            true
+        }
+    }
+
     suspend fun getGenres(count: Int = 2000): List<BrowseItem> {
         return safeCall("getGenres", emptyList()) {
             val loop = rpcLoop(listOf("genres", 0, count), "genres_loop")
@@ -1803,10 +1937,10 @@ object LMS{
     // All albums in the given Lyrion sort order (like Material's Releases).
     suspend fun getReleases(sort: String = "artistalbum", count: Int = 10000): List<BrowseItem> {
         return safeCall("getReleases", emptyList()) {
-            val loop = rpcLoop(listOf("albums", 0, count, "sort:$sort", "tags:ljay"), "albums_loop")
+            val loop = rpcLoop(listOf("albums", 0, count, "sort:$sort", "tags:ljayE"), "albums_loop")
             (0 until loop.length()).map {
                 val o = loop.getJSONObject(it)
-                BrowseItem(o.optString("id"), o.optString("album"), o.optString("artwork_track_id"), o.optString("artist"), o.optString("year"))
+                BrowseItem(o.optString("id"), o.optString("album"), o.optString("artwork_track_id"), o.optString("artist"), o.optString("year"), service = serviceOfExtId(o.optString("extid")))
             }
         }
     }
@@ -1814,10 +1948,10 @@ object LMS{
     // Newest albums first (Lyrion sort:new), with the artist as second line.
     suspend fun getNewAlbums(count: Int = 200): List<BrowseItem> {
         return safeCall("getNewAlbums", emptyList()) {
-            val loop = rpcLoop(listOf("albums", 0, count, "sort:new", "tags:lja"), "albums_loop")
+            val loop = rpcLoop(listOf("albums", 0, count, "sort:new", "tags:ljaE"), "albums_loop")
             (0 until loop.length()).map {
                 val o = loop.getJSONObject(it)
-                BrowseItem(o.optString("id"), o.optString("album"), o.optString("artwork_track_id"), o.optString("artist"))
+                BrowseItem(o.optString("id"), o.optString("album"), o.optString("artwork_track_id"), o.optString("artist"), service = serviceOfExtId(o.optString("extid")))
             }
         }
     }

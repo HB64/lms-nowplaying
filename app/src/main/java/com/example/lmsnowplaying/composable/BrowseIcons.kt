@@ -4,6 +4,21 @@ import androidx.compose.ui.graphics.vector.ImageVector
 
 // Browse and menu icons from Material Design Icons (Pictogrammers, Apache 2.0).
 
+// The three play actions (Material Design Icons: play, skip-next, plus).
+val ActionPlayIcon: ImageVector by lazy { mdiIcon("Play", "M8,5.14V19.14L19,12.14L8,5.14Z") }
+val ActionNextIcon: ImageVector by lazy { mdiIcon("SkipNext", "M16,18H18V6H16M6,18L14.5,12L6,6V18Z") }
+val ActionAddIcon: ImageVector by lazy { mdiIcon("Plus", "M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z") }
+// Remove from the queue (Material Design Icons: delete)
+val ActionDeleteIcon: ImageVector by lazy { mdiIcon("Delete", "M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z") }
+// Move the queue to another player (Material Design Icons: swap-horizontal)
+val ActionMoveIcon: ImageVector by lazy { mdiIcon("SwapHorizontal", "M21,9L17,5V8H10V10H17V13M7,11L3,15L7,19V16H14V14H7V11Z") }
+// Empty the queue (Material Design Icons: playlist-remove)
+val ActionClearQueueIcon: ImageVector by lazy { mdiIcon("PlaylistRemove", "M14,10H3V12H14V10M14,6H3V8H14V6M3,16H10V14H3V16M14.41,22L17,19.41L19.59,22L21,20.59L18.41,18L21,15.41L19.59,14L17,16.59L14.41,14L13,15.41L15.59,18L13,20.59L14.41,22Z") }
+// Remove repeated tracks: two notes, the second one struck through (drawn after the Material skin's icon)
+val ActionDuplicateIcon: ImageVector by lazy { mdiIcon("RemoveDuplicates", "M6,2H9.5V5H8V10A2.5,2.5 0 1,1 6,8ZM16.00,15.74L14.00,13.29L14.00,17.00L13.71,16.96L13.38,16.96L13.05,17.01L12.74,17.09L12.44,17.22L12.15,17.38L11.89,17.58L11.66,17.81L11.46,18.07L11.30,18.35L11.17,18.65L11.09,18.97L11.05,19.29L11.05,19.62L11.09,19.95L11.17,20.26L11.30,20.56L11.46,20.85L11.66,21.11L11.89,21.34L12.15,21.54L12.44,21.70L12.74,21.83L13.05,21.91L13.38,21.95L13.71,21.95L14.03,21.91L14.35,21.83L14.65,21.70L14.93,21.54L15.19,21.34L15.42,21.11L15.62,20.85L15.78,20.56L15.91,20.26L15.99,19.95L16.04,19.62L16.04,19.29L16.00,19.00ZM17.50,14.00L17.50,11.00L14.19,11.00L16.65,14.00ZM10.88,12.01L19.88,23.01L21.12,21.99L12.12,10.99Z") }
+// Look inside (list of what a favorite or radio item contains)
+val ActionBrowseIcon: ImageVector by lazy { mdiIcon("FormatListBulleted", "M7,5H21V7H7V5M7,13V11H21V13H7M4,4.5A1.5,1.5 0 0,1 5.5,6A1.5,1.5 0 0,1 4,7.5A1.5,1.5 0 0,1 2.5,6A1.5,1.5 0 0,1 4,4.5M4,10.5A1.5,1.5 0 0,1 5.5,12A1.5,1.5 0 0,1 4,13.5A1.5,1.5 0 0,1 2.5,12A1.5,1.5 0 0,1 4,10.5M7,19V17H21V19H7M4,16.5A1.5,1.5 0 0,1 5.5,18A1.5,1.5 0 0,1 4,19.5A1.5,1.5 0 0,1 2.5,18A1.5,1.5 0 0,1 4,16.5Z") }
+
 val SearchIcon: ImageVector by lazy {
     mdiIcon("Magnify", "M9.5,3A6.5,6.5 0 0,1 16,9.5C16,11.11 15.41,12.59 14.44,13.73L14.71,14H15.5L20.5,19L19,20.5L14,15.5V14.71L13.73,14.44C12.59,15.41 11.11,16 9.5,16A6.5,6.5 0 0,1 3,9.5A6.5,6.5 0 0,1 9.5,3M9.5,5C7,5 5,7 5,9.5C5,12 7,14 9.5,14C12,14 14,12 14,9.5C14,7 12,5 9.5,5Z")
 }

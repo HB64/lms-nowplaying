@@ -77,6 +77,7 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -85,6 +86,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.lmsnowplaying.network.logitechmediaserver.BrowseItem
@@ -110,8 +112,9 @@ import kotlinx.coroutines.withContext
 // plus Search), with play / queue actions on albums and tracks.
 private enum class BrowseLevel {
     ROOT, ARTISTS, ALBUMS, TRACKS, TRACK_ACTIONS, SEARCH, GENRES, GENRE_ARTISTS, FOLDER, MIX,
-    FAVORITES, FAVORITE_ACTIONS, PLAYLISTS, PLAYLIST_ACTIONS, PLAYLIST_TRACKS, RADIO, RADIO_ACTIONS, RADIO_SEARCH, MY_MUSIC,
-    NEW_MUSIC, ALBUM_ARTISTS, COMPOSERS, YEARS, YEAR_ALBUMS, RELEASES, RELEASES_SORT
+    FAVORITES, FAVORITE_ACTIONS, PLAYLISTS, PLAYLIST_TRACKS, RADIO, RADIO_ACTIONS, RADIO_SEARCH, MY_MUSIC,
+    NEW_MUSIC, ALBUM_ARTISTS, COMPOSERS, YEARS, YEAR_ALBUMS, RELEASES, RELEASES_SORT,
+    MUSICIP_MOODS, MUSICIP_TRACKS, MUSICIP_SETTINGS
 }
 
 // The part of the panel a level belongs to, and the way back up to it from the
@@ -122,7 +125,9 @@ private fun browseSection(level: BrowseLevel): String = when (level) {
     BrowseLevel.YEARS, BrowseLevel.YEAR_ALBUMS -> "YEARS"
     BrowseLevel.RELEASES, BrowseLevel.RELEASES_SORT -> "RELEASES"
     BrowseLevel.FAVORITES, BrowseLevel.FAVORITE_ACTIONS -> "FAVORITES"
-    BrowseLevel.PLAYLISTS, BrowseLevel.PLAYLIST_ACTIONS, BrowseLevel.PLAYLIST_TRACKS -> "PLAYLISTS"
+    BrowseLevel.PLAYLISTS, BrowseLevel.PLAYLIST_TRACKS -> "PLAYLISTS"
+    BrowseLevel.MUSICIP_MOODS, BrowseLevel.MUSICIP_TRACKS -> "MUSICIP_MOODS"
+    BrowseLevel.MUSICIP_SETTINGS -> "MUSICIP_MOODS"
     BrowseLevel.RADIO, BrowseLevel.RADIO_ACTIONS, BrowseLevel.RADIO_SEARCH -> "RADIO"
     else -> level.name
 }
@@ -132,6 +137,7 @@ private fun restoreBrowse(section: String): Pair<BrowseLevel, List<BrowseLevel>>
     "ARTISTS", "GENRES", "FOLDER", "FAVORITES", "PLAYLISTS", "SEARCH", "NEW_MUSIC", "ALBUM_ARTISTS", "COMPOSERS", "YEARS", "RELEASES" ->
         BrowseLevel.valueOf(section) to listOf(BrowseLevel.ROOT, BrowseLevel.MY_MUSIC)
     "RADIO", "MIX" -> BrowseLevel.valueOf(section) to listOf(BrowseLevel.ROOT)
+    "MUSICIP_MOODS" -> BrowseLevel.MUSICIP_MOODS to listOf(BrowseLevel.ROOT, BrowseLevel.MIX)
     else -> BrowseLevel.ROOT to emptyList()
 }
 
@@ -238,6 +244,10 @@ fun BrowseScreen() {
     }
     var actionFavorite by remember { mutableStateOf<BrowseItem?>(null) }
     var actionPlaylist by remember { mutableStateOf<BrowseItem?>(null) }
+
+    // MusicIP mood mix: the chosen mood and its mix (kept while its menu and track list are open).
+    var chosenMood by remember { mutableStateOf("") }
+    var mipMix by remember { mutableStateOf<List<Pair<BrowseTrack, String>>?>(null) }
 
     // Radio: the path of levels opened so far (the first is the list of radio
     // plugins, then the levels inside the chosen plugin) and that plugin's command.
@@ -360,6 +370,9 @@ fun BrowseScreen() {
                     BrowseLevel.FAVORITES -> favPath.lastOrNull()?.name ?: stringResource(R.string.browse_favorites)
                     BrowseLevel.FAVORITE_ACTIONS -> actionFavorite?.name ?: stringResource(R.string.browse_favorite)
                     BrowseLevel.PLAYLISTS -> stringResource(R.string.browse_playlists)
+                    BrowseLevel.MUSICIP_MOODS -> stringResource(R.string.browse_musicip)
+                    BrowseLevel.MUSICIP_TRACKS -> chosenMood
+                    BrowseLevel.MUSICIP_SETTINGS -> stringResource(R.string.musicip_settings)
                     BrowseLevel.NEW_MUSIC -> stringResource(R.string.browse_new_music)
                     BrowseLevel.RELEASES -> stringResource(R.string.browse_releases)
                     BrowseLevel.RELEASES_SORT -> stringResource(R.string.sort_by)
@@ -367,7 +380,7 @@ fun BrowseScreen() {
                     BrowseLevel.RADIO_ACTIONS -> actionRadio?.name ?: stringResource(R.string.browse_radio)
                     BrowseLevel.RADIO_SEARCH -> radioSearch.name
                     BrowseLevel.MY_MUSIC -> stringResource(R.string.browse_my_music)
-                    BrowseLevel.PLAYLIST_ACTIONS, BrowseLevel.PLAYLIST_TRACKS -> actionPlaylist?.name ?: stringResource(R.string.browse_playlist)
+                    BrowseLevel.PLAYLIST_TRACKS -> actionPlaylist?.name ?: stringResource(R.string.browse_playlist)
                 },
                 color = Color.White,
                 fontSize = 16.sp,
@@ -542,7 +555,8 @@ fun BrowseScreen() {
                         }) else null,
                     )
                 }
-                BrowseLevel.MIX -> MixPanel()
+                BrowseLevel.MIX -> MixPanel(onMusicIp = { go(BrowseLevel.MUSICIP_MOODS) })
+                BrowseLevel.MUSICIP_SETTINGS -> MusicIpSettingsList()
                 BrowseLevel.FAVORITES -> favPath.lastOrNull()?.let { folder ->
                     FavoritesList(
                         folder = folder,
@@ -556,12 +570,25 @@ fun BrowseScreen() {
                 BrowseLevel.FAVORITE_ACTIONS -> actionFavorite?.let { FavoriteActions(it, onDone = goBack) }
                 BrowseLevel.PLAYLISTS -> PlaylistList(onItem = {
                     actionPlaylist = it
-                    go(BrowseLevel.PLAYLIST_ACTIONS)
+                    selectedTrackId = ""
+                    go(BrowseLevel.PLAYLIST_TRACKS)
                 })
-                BrowseLevel.PLAYLIST_ACTIONS -> actionPlaylist?.let {
-                    PlaylistActions(it, onDone = goBack, onTracks = { go(BrowseLevel.PLAYLIST_TRACKS) })
+                BrowseLevel.PLAYLIST_TRACKS -> actionPlaylist?.let { PlaylistTracks(it, selectedId = selectedTrackId, onTrack = chooseTrack) }
+                BrowseLevel.MUSICIP_MOODS -> MusicIpMoodList(
+                    onMood = {
+                        chosenMood = it
+                        mipMix = null
+                        selectedTrackId = ""
+                        go(BrowseLevel.MUSICIP_TRACKS)
+                    },
+                    onSettings = { go(BrowseLevel.MUSICIP_SETTINGS) },
+                )
+                BrowseLevel.MUSICIP_TRACKS -> {
+                    LaunchedEffect(chosenMood) {
+                        if (mipMix == null) mipMix = withContext(Dispatchers.IO) { LMS.getMusicIpMix(chosenMood) }
+                    }
+                    MusicIpTracks(mipMix, selectedId = selectedTrackId, onTrack = chooseTrack)
                 }
-                BrowseLevel.PLAYLIST_TRACKS -> actionPlaylist?.let { PlaylistTracks(it, onTrack = chooseTrack) }
                 BrowseLevel.GENRES -> LoadedList(
                     items = genres,
                     load = { LMS.getGenres() },
@@ -1047,18 +1074,22 @@ private fun FavoritesList(
     val startIndex = remember(folder.id) { if (memKey.isEmpty()) 0 else (NavState.listFocus[memKey] ?: 0).coerceIn(0, (list.size - 1).coerceAtLeast(0)) }
     val listState = rememberLazyListState()
     LaunchedEffect(list) { if (startIndex > 0) listState.scrollToItem(startIndex) }
+    // In a folder the icons for the whole folder stay in place above the list
+    Column {
+    if (hasActions) {
+        IconActionRow(
+            listOf(
+                Triple(ActionPlayIcon, stringResource(R.string.action_play_now), { runFolder("load", context.getString(R.string.fav_playing)) }),
+                Triple(ActionAddIcon, stringResource(R.string.action_add_end), { runFolder("add", context.getString(R.string.fav_added)) }),
+            ),
+            firstFocus,
+            buttonSize = 40.dp,
+            iconSize = 22.dp,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            wrapLeft = false,
+        )
+    }
     HintLazyColumn(state = listState) {
-        if (hasActions) {
-            item {
-                BrowseRow(stringResource(R.string.fav_play_all),
-                    modifier = Modifier.focusRequester(firstFocus),
-                    onClick = { runFolder("load", context.getString(R.string.fav_playing)) })
-            }
-            item {
-                BrowseRow(stringResource(R.string.fav_add_all),
-                    onClick = { runFolder("add", context.getString(R.string.fav_added)) })
-            }
-        }
         items(list.size) { index ->
             val entry = list[index]
             ThumbRow(
@@ -1074,6 +1105,7 @@ private fun FavoritesList(
                 modifier = (if (!hasActions && index == startIndex) Modifier.focusRequester(firstFocus) else Modifier).trackFocus(memKey, index)
             )
         }
+    }
     }
 }
 
@@ -1093,14 +1125,14 @@ private fun FavoriteActions(favorite: BrowseItem, onDone: () -> Unit, plugin: St
     val firstFocus = remember { FocusRequester() }
     LaunchedEffect(favorite) { firstFocus.requestFocus() }
 
-    Column {
-        BrowseRow(stringResource(R.string.action_play_now), modifier = Modifier.focusRequester(firstFocus),
-            onClick = { run("load", context.getString(R.string.fav_item_playing)) })
-        BrowseRow(stringResource(R.string.action_play_next), onClick = { run("insert", context.getString(R.string.fav_item_next)) })
-        BrowseRow(stringResource(R.string.action_add_end), onClick = { run("add", context.getString(R.string.fav_item_added)) })
-        // Looks at what is inside (the tracks of an album)
-        if (onOpen != null) BrowseRow(stringResource(R.string.action_browse), onClick = onOpen)
+    // Icons side by side; the last one (if any) looks at what is inside (the tracks of an album)
+    val actions = buildList<Triple<ImageVector, String, () -> Unit>> {
+        add(Triple(ActionPlayIcon, stringResource(R.string.action_play_now), { run("load", context.getString(R.string.fav_item_playing)) }))
+        add(Triple(ActionNextIcon, stringResource(R.string.action_play_next), { run("insert", context.getString(R.string.fav_item_next)) }))
+        add(Triple(ActionAddIcon, stringResource(R.string.action_add_end), { run("add", context.getString(R.string.fav_item_added)) }))
+        if (onOpen != null) add(Triple(ActionBrowseIcon, stringResource(R.string.action_browse), onOpen))
     }
+    IconActionRow(actions, firstFocus, buttonSize = 40.dp, iconSize = 22.dp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
 }
 
 // The saved playlists of the server.
@@ -1134,37 +1166,231 @@ private fun PlaylistList(onItem: (BrowseItem) -> Unit) {
     }
 }
 
-// Action menu for one playlist: play now / next / add to the end.
+// The MusicIP moods; OK on one makes a mix for it. The first row opens the MusicIP settings.
 @Composable
-private fun PlaylistActions(playlist: BrowseItem, onDone: () -> Unit, onTracks: () -> Unit) {
-    val context = LocalContext.current.applicationContext
-    val scope = rememberCoroutineScope()
-    val run: (String, String) -> Unit = { cmd, message ->
-        scope.launch {
-            val ok = withContext(Dispatchers.IO) { LMS.playlistControl(cmd, playlistId = playlist.id) }
-            Toast.makeText(context, if (ok) message else context.getString(R.string.common_no_player), Toast.LENGTH_SHORT).show()
-        }
-        onDone()
+private fun MusicIpMoodList(onMood: (String) -> Unit, onSettings: () -> Unit) {
+    var moods by remember { mutableStateOf<List<String>?>(null) }
+    LaunchedEffect(Unit) { moods = withContext(Dispatchers.IO) { LMS.getMusicIpMoods() } }
+
+    val list = moods
+    if (list == null) {
+        Text(stringResource(R.string.common_loading), color = Color.White.copy(alpha = 0.7f), fontSize = 14.sp, modifier = Modifier.padding(start = 12.dp))
+        return
+    }
+    if (list.isEmpty()) {
+        Text(stringResource(R.string.musicip_no_moods), color = Color.White.copy(alpha = 0.7f), fontSize = 14.sp, modifier = Modifier.padding(start = 12.dp))
+        return
     }
 
     val firstFocus = remember { FocusRequester() }
-    LaunchedEffect(playlist) { firstFocus.requestFocus() }
-
-    Column {
-        BrowseRow(stringResource(R.string.action_play_now), modifier = Modifier.focusRequester(firstFocus),
-            onClick = { run("load", context.getString(R.string.playlist_playing)) })
-        BrowseRow(stringResource(R.string.action_play_next), onClick = { run("insert", context.getString(R.string.playlist_next)) })
-        BrowseRow(stringResource(R.string.action_add_end), onClick = { run("add", context.getString(R.string.playlist_added)) })
-        BrowseRow(stringResource(R.string.playlist_show_tracks), onClick = onTracks)
+    val startIndex = remember { (NavState.listFocus["MUSICIP_MOODS"] ?: 0).coerceIn(0, list.size - 1) }
+    val listState = rememberLazyListState()
+    LaunchedEffect(list) {
+        // +1: the settings row comes before the moods
+        if (startIndex > 0) listState.scrollToItem(startIndex + 1)
+        try { firstFocus.requestFocus() } catch (_: Exception) { }
+    }
+    HintLazyColumn(state = listState) {
+        item { BrowseRow(stringResource(R.string.musicip_settings), onClick = onSettings, icon = SettingsMenuIcon) }
+        items(list.size) { index ->
+            BrowseRow(list[index], onClick = { onMood(list[index]) },
+                modifier = (if (index == startIndex) Modifier.focusRequester(firstFocus) else Modifier).trackFocus("MUSICIP_MOODS", index))
+        }
     }
 }
 
 // The tracks of one playlist; OK on a track opens its action menu.
 @Composable
-private fun PlaylistTracks(playlist: BrowseItem, onTrack: (BrowseTrack) -> Unit) {
+private fun PlaylistTracks(playlist: BrowseItem, selectedId: String, onTrack: (BrowseTrack) -> Unit) {
     var entries by remember(playlist.id) { mutableStateOf<List<Pair<BrowseTrack, String>>?>(null) }
     LaunchedEffect(playlist.id) { entries = withContext(Dispatchers.IO) { LMS.getPlaylistTracks(playlist.id) } }
-    TrackDetailList(entries, onTrack)
+    val context = LocalContext.current.applicationContext
+    val scope = rememberCoroutineScope()
+    // The row of icons above the tracks acts on the whole playlist
+    val run: (String, Int) -> Unit = { cmd, message ->
+        scope.launch {
+            val ok = withContext(Dispatchers.IO) { LMS.playlistControl(cmd, playlistId = playlist.id) }
+            Toast.makeText(context, if (ok) context.getString(message) else context.getString(R.string.common_no_player), Toast.LENGTH_SHORT).show()
+        }
+    }
+    TrackDetailList(
+        entries, onTrack, selectedId = selectedId,
+        headerActions = listOf(
+            Triple(ActionPlayIcon, stringResource(R.string.action_play_now), { run("load", R.string.playlist_playing) }),
+            Triple(ActionNextIcon, stringResource(R.string.action_play_next), { run("insert", R.string.playlist_next) }),
+            Triple(ActionAddIcon, stringResource(R.string.action_add_end), { run("add", R.string.playlist_added) }),
+        ),
+    )
+}
+
+// The tracks of a MusicIP mix; the row of icons above them acts on the whole mix.
+@Composable
+private fun MusicIpTracks(mix: List<Pair<BrowseTrack, String>>?, selectedId: String, onTrack: (BrowseTrack) -> Unit) {
+    val context = LocalContext.current.applicationContext
+    val scope = rememberCoroutineScope()
+    val run: (String, Int) -> Unit = { cmd, message ->
+        scope.launch {
+            val ok = withContext(Dispatchers.IO) { LMS.playTrackIds(cmd, mix.orEmpty().map { it.first.id }) }
+            Toast.makeText(context, if (ok) context.getString(message) else context.getString(R.string.common_no_player), Toast.LENGTH_SHORT).show()
+        }
+    }
+    TrackDetailList(
+        mix, onTrack, selectedId = selectedId,
+        headerActions = listOf(
+            Triple(ActionPlayIcon, stringResource(R.string.action_play_now), { run("load", R.string.musicip_playing) }),
+            Triple(ActionNextIcon, stringResource(R.string.action_play_next), { run("insert", R.string.musicip_next) }),
+            Triple(ActionAddIcon, stringResource(R.string.action_add_end), { run("add", R.string.musicip_added) }),
+        ),
+    )
+}
+
+// MusicIP's own settings of the active player (not the excluded genres: those stay in Material).
+@Composable
+private fun MusicIpSettingsList() {
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current.applicationContext
+    var settings by remember { mutableStateOf<LMS.MusicIpSettings?>(null) }
+    var unavailable by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        val s = withContext(Dispatchers.IO) { LMS.getMusicIpSettings() }
+        if (s == null) unavailable = true else settings = s
+    }
+    if (unavailable) {
+        Text(stringResource(R.string.musicip_settings_unavailable), color = Color.White.copy(alpha = 0.7f), fontSize = 14.sp, modifier = Modifier.padding(start = 12.dp))
+        return
+    }
+    val s = settings
+    if (s == null) {
+        Text(stringResource(R.string.common_loading), color = Color.White.copy(alpha = 0.7f), fontSize = 14.sp, modifier = Modifier.padding(start = 12.dp))
+        return
+    }
+
+    val firstFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { try { firstFocus.requestFocus() } catch (_: Exception) { } }
+    val unitNames = listOf(
+        stringResource(R.string.musicip_unit_tracks),
+        stringResource(R.string.musicip_unit_min),
+        stringResource(R.string.musicip_unit_mb),
+    )
+    val noneLabel = stringResource(R.string.musicip_none)
+
+    // Mix filter: the list comes from MusicIP itself, so it is fetched when the row is opened
+    var filter by remember { mutableStateOf(if (s.filter == "0") "" else s.filter) }
+    var filters by remember { mutableStateOf<List<String>?>(null) }
+    var picking by remember { mutableStateOf(false) }
+    val filterRowFocus = remember { FocusRequester() }
+    var wasPicking by remember { mutableStateOf(false) }
+    BackHandler(enabled = picking) { picking = false }
+    LaunchedEffect(picking) {
+        if (!picking && wasPicking) { try { filterRowFocus.requestFocus() } catch (_: Exception) { } }
+        wasPicking = picking
+    }
+    if (picking) {
+        val list = filters
+        if (list == null) {
+            Text(stringResource(R.string.common_loading), color = Color.White.copy(alpha = 0.7f), fontSize = 14.sp, modifier = Modifier.padding(start = 12.dp))
+            return
+        }
+        val pickFocus = remember { FocusRequester() }
+        LaunchedEffect(Unit) { try { pickFocus.requestFocus() } catch (_: Exception) { } }
+        val choices = listOf("") + list
+        HintLazyColumn {
+            items(choices.size) { index ->
+                val name = choices[index]
+                BrowseRow(
+                    text = (if (name == filter) "●  " else "○  ") + (if (name.isEmpty()) noneLabel else name),
+                    modifier = if (index == choices.indexOf(filter).coerceAtLeast(0)) Modifier.focusRequester(pickFocus) else Modifier,
+                    onClick = {
+                        filter = name
+                        picking = false
+                        // "0" is how the plugin stores no filter
+                        scope.launch(Dispatchers.IO) { LMS.setMusicIpPref("mix_filter", if (name.isEmpty()) "0" else name) }
+                    }
+                )
+            }
+        }
+        return
+    }
+
+    HintLazyColumn {
+        item { MusicIpSliderRow(stringResource(R.string.musicip_set_size), s.size.coerceIn(1, 200), 1, 200, "mix_size", Modifier.focusRequester(firstFocus)) }
+        item { MusicIpCycleRow(stringResource(R.string.musicip_set_unit), unitNames, s.type, "mix_type") }
+        item { MusicIpSliderRow(stringResource(R.string.musicip_set_style), s.style.coerceIn(0, 200), 0, 200, "mix_style") }
+        item { MusicIpSliderRow(stringResource(R.string.musicip_set_variety), s.variety.coerceIn(0, 9), 0, 9, "mix_variety") }
+        item { MusicIpCycleRow(stringResource(R.string.musicip_set_genre), listOf(stringResource(R.string.musicip_no), stringResource(R.string.musicip_yes)), s.genre, "mix_genre") }
+        item { MusicIpSliderRow(stringResource(R.string.musicip_set_reject), s.rejectSize.coerceIn(0, 200), 0, 200, "reject_size") }
+        item { MusicIpCycleRow(stringResource(R.string.musicip_set_reject_unit), unitNames, s.rejectType, "reject_type") }
+        item {
+            BrowseRow(
+                text = stringResource(R.string.musicip_set_filter),
+                trailing = filter.ifEmpty { noneLabel },
+                modifier = Modifier.focusRequester(filterRowFocus),
+                onClick = {
+                    scope.launch {
+                        val found = withContext(Dispatchers.IO) { LMS.getMusicIpFilters() }
+                        if (found == null) {
+                            Toast.makeText(context, context.getString(R.string.musicip_filters_failed, LMS.musicIpFiltersAddress), Toast.LENGTH_LONG).show()
+                        } else {
+                            filters = found
+                            picking = true
+                        }
+                    }
+                }
+            )
+        }
+    }
+}
+
+// A MusicIP setting with a range: Left/Right change it (holding goes faster). The value changes at once,
+// the command follows when the key has been left alone for a moment, so a held key doesn't flood the server.
+@Composable
+private fun MusicIpSliderRow(label: String, initial: Int, min: Int, max: Int, pref: String, modifier: Modifier = Modifier) {
+    val scope = rememberCoroutineScope()
+    var value by remember { mutableIntStateOf(initial) }
+    var sendJob by remember { mutableStateOf<Job?>(null) }
+    val move = { delta: Int ->
+        val next = (value + delta).coerceIn(min, max)
+        if (next != value) {
+            value = next
+            sendJob?.cancel()
+            sendJob = scope.launch {
+                kotlinx.coroutines.delay(400)
+                withContext(Dispatchers.IO) { LMS.setMusicIpPref(pref, next) }
+            }
+        }
+    }
+    SliderRow(
+        label = label, value = value, min = min, max = max, valueText = value.toString(),
+        modifier = modifier.onKeyEvent { event ->
+            if (event.type != KeyEventType.KeyDown) false
+            else {
+                // Holding the key for a while goes faster (relative to the size of the range)
+                val fast = if (max - min > 20) 5 else 1
+                val step = if (event.nativeKeyEvent.repeatCount >= 15) fast else 1
+                when (event.key) {
+                    Key.DirectionRight -> { move(step); true }
+                    Key.DirectionLeft -> { move(-step); true }
+                    else -> false
+                }
+            }
+        }
+    )
+}
+
+// A MusicIP setting with a few choices: OK goes to the next one.
+@Composable
+private fun MusicIpCycleRow(label: String, names: List<String>, initial: Int, pref: String) {
+    val scope = rememberCoroutineScope()
+    var index by remember { mutableIntStateOf(initial.coerceIn(0, names.size - 1)) }
+    BrowseRow(
+        text = label,
+        trailing = names[index],
+        onClick = {
+            val next = (index + 1) % names.size
+            index = next
+            scope.launch(Dispatchers.IO) { LMS.setMusicIpPref(pref, next) }
+        }
+    )
 }
 
 // A list of tracks with cover, title and artist · album.
@@ -1172,6 +1398,10 @@ private fun PlaylistTracks(playlist: BrowseItem, onTrack: (BrowseTrack) -> Unit)
 private fun TrackDetailList(
     entries: List<Pair<BrowseTrack, String>>?,
     onTrack: (BrowseTrack) -> Unit,
+    // Optional row of icons above the tracks (play the whole list)
+    headerActions: List<Triple<ImageVector, String, () -> Unit>>? = null,
+    // The track that was last opened: the list comes back on it
+    selectedId: String = "",
 ) {
     val list = entries
     if (list == null) {
@@ -1186,21 +1416,39 @@ private fun TrackDetailList(
     val firstFocus = remember { FocusRequester() }
     val imageLoader = rememberLmsImageLoader()
     val context = LocalContext.current
+    val startIndex = remember(list, selectedId) { list.indexOfFirst { it.first.id == selectedId } }
+    val startFocus = remember { FocusRequester() }
+    val listState = rememberLazyListState()
     LaunchedEffect(list) {
-        try { firstFocus.requestFocus() } catch (_: Exception) { }
+        if (startIndex >= 0) {
+            listState.scrollToItem(startIndex)
+            try { startFocus.requestFocus() } catch (_: Exception) { }
+        } else {
+            try { firstFocus.requestFocus() } catch (_: Exception) { }
+        }
     }
-    HintLazyColumn {
+    // The icons stay in place above the list while it scrolls
+    Column {
+    if (headerActions != null) {
+        // Left on the first icon is one step back, like on every list
+        IconActionRow(headerActions, firstFocus, buttonSize = 40.dp, iconSize = 22.dp, wrapLeft = false)
+    }
+    HintLazyColumn(state = listState) {
         items(list.size) { index ->
             val (track, detail) = list[index]
             val interactionSource = remember { MutableInteractionSource() }
             val focused by interactionSource.collectIsFocusedAsState()
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = (if (index == 0) Modifier.focusRequester(firstFocus) else Modifier)
+                modifier = when {
+                    index == startIndex -> Modifier.focusRequester(startFocus)
+                    index == 0 && headerActions == null -> Modifier.focusRequester(firstFocus)
+                    else -> Modifier
+                }
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(6.dp))
                     .background(if (focused) Color.White.copy(alpha = 0.25f) else Color.Transparent)
-                    .clickable(interactionSource = interactionSource, indication = null, onClick = { onTrack(track) })
+                    .clickable(interactionSource = interactionSource, indication = null, onClick = { onTrack(track.copy(subtitle = detail)) })
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
                 Box(
@@ -1229,14 +1477,18 @@ private fun TrackDetailList(
             }
         }
     }
+    }
 }
 
 // Auto Mix control: which plugin keeps the queue filled (only one at a
 // time - switching one on switches the others off), plus start/add actions
 // for the active one.
 @Composable
-private fun MixPanel() {
+private fun MixPanel(onMusicIp: () -> Unit) {
     var state by remember { mutableStateOf<MixState?>(null) }
+    // MusicIP's own mood mix, offered when its plugin answers
+    var musicIpAvailable by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { musicIpAvailable = withContext(Dispatchers.IO) { LMS.getMusicIpMoods().isNotEmpty() } }
     val context = LocalContext.current.applicationContext
     val scope = rememberCoroutineScope()
 
@@ -1438,6 +1690,40 @@ private fun MixPanel() {
         }
     }
 
+    Column {
+        if (active != null) {
+            val rowFocus = remember { FocusRequester() }
+            // Back closes the open settings first, instead of leaving the Mix list
+            BackHandler(enabled = settingsOpen) {
+                settingsOpen = false
+                genresOpen = false
+                scope.launch {
+                    kotlinx.coroutines.delay(60)
+                    try { rowFocus.requestFocus() } catch (_: Exception) { }
+                }
+            }
+            val actions = buildList<Triple<ImageVector, String, () -> Unit>> {
+                add(Triple(StartMixIcon, stringResource(R.string.mix_start_new), {
+                    scope.launch(Dispatchers.IO) { LMS.mixAction(active, MixAction.START_MIX) }
+                    Toast.makeText(context, context.getString(R.string.mix_started), Toast.LENGTH_SHORT).show()
+                }))
+                // Lyrion's Random Mix has no batches
+                if (active != MixPlugin.RANDOMPLAY && hasBatch) {
+                    add(Triple(BatchStartIcon, stringResource(R.string.mix_start_batch), {
+                        scope.launch(Dispatchers.IO) { LMS.mixAction(active, MixAction.START_BATCH) }
+                        Toast.makeText(context, context.getString(R.string.mix_batch_started), Toast.LENGTH_SHORT).show()
+                    }))
+                    add(Triple(BatchAddIcon, stringResource(R.string.mix_add_batch), {
+                        scope.launch(Dispatchers.IO) { LMS.mixAction(active, MixAction.ADD_BATCH) }
+                        Toast.makeText(context, context.getString(R.string.mix_batch_added), Toast.LENGTH_SHORT).show()
+                    }))
+                }
+                if (settings.isNotEmpty()) {
+                    add(Triple(SettingsMenuIcon, stringResource(R.string.menu_settings), { settingsOpen = !settingsOpen }))
+                }
+            }
+            IconActionRow(actions, rowFocus, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+        }
     HintLazyColumn(state = listState) {
         items(shown.size) { index ->
             val plugin = shown[index]
@@ -1477,37 +1763,11 @@ private fun MixPanel() {
                 }
             }
         }
+        if (musicIpAvailable) {
+            item { BrowseRow(stringResource(R.string.browse_musicip), onClick = onMusicIp, icon = MusicIpIcon) }
+        }
         if (active != null) {
-            item { SectionHeader(active.label) }
-            item {
-                BrowseRow(stringResource(R.string.mix_start_new), icon = StartMixIcon, onClick = {
-                    scope.launch(Dispatchers.IO) { LMS.mixAction(active, MixAction.START_MIX) }
-                    Toast.makeText(context, context.getString(R.string.mix_started), Toast.LENGTH_SHORT).show()
-                })
-            }
-            // Lyrion's Random Mix has no batches
-            if (active != MixPlugin.RANDOMPLAY && hasBatch) {
-                item {
-                    BrowseRow(stringResource(R.string.mix_start_batch), icon = BatchStartIcon, onClick = {
-                        scope.launch(Dispatchers.IO) { LMS.mixAction(active, MixAction.START_BATCH) }
-                        Toast.makeText(context, context.getString(R.string.mix_batch_started), Toast.LENGTH_SHORT).show()
-                    })
-                }
-                item {
-                    BrowseRow(stringResource(R.string.mix_add_batch), icon = BatchAddIcon, onClick = {
-                        scope.launch(Dispatchers.IO) { LMS.mixAction(active, MixAction.ADD_BATCH) }
-                        Toast.makeText(context, context.getString(R.string.mix_batch_added), Toast.LENGTH_SHORT).show()
-                    })
-                }
-            }
             if (settings.isNotEmpty()) {
-                item {
-                    BrowseRow(
-                        (if (settingsOpen) "▾ " else "▸ ") + stringResource(R.string.menu_settings),
-                        icon = SettingsMenuIcon,
-                        onClick = { settingsOpen = !settingsOpen }
-                    )
-                }
                 settingItems(settingsOpen, { settings }, { settings = it }, firstFocus = settingsFocus, onPicked = { cmd ->
                     // The icon follows the Random Mix type
                     if (cmd.firstOrNull() == LMS.APP_MIX_TYPE) {
@@ -1554,6 +1814,7 @@ private fun MixPanel() {
                 }
             }
         }
+    }
     }
 }
 
@@ -1866,6 +2127,8 @@ internal fun ThumbRow(
     modifier: Modifier = Modifier,
     bold: Boolean = false,
     subtitle: String = "",
+    // Streaming service of the item (lower case); shows its logo at the end of the row
+    service: String = "",
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val focused by interactionSource.collectIsFocusedAsState()
@@ -1907,7 +2170,7 @@ internal fun ThumbRow(
         }
         Spacer(modifier = Modifier.width(10.dp))
         // Long lines scroll by themselves while the row has focus
-        Column {
+        Column(modifier = if (service.isNotEmpty()) Modifier.weight(1f) else Modifier) {
             Text(
                 text = text, color = Color.White, fontSize = 14.sp, maxLines = 1,
                 fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal,
@@ -1921,6 +2184,36 @@ internal fun ThumbRow(
                     modifier = if (focused) Modifier.basicMarquee() else Modifier
                 )
             }
+        }
+        if (service.isNotEmpty()) {
+            Spacer(modifier = Modifier.width(8.dp))
+            ServiceBadge(service, imageLoader)
+        }
+    }
+}
+
+// The logo of a streaming service from the server's Material plugin; the name as text when it has none.
+@Composable
+private fun ServiceBadge(service: String, imageLoader: ImageLoader) {
+    var logo by remember(service) { mutableIntStateOf(0) } // 0 loading, 1 shown, 2 none
+    Box(contentAlignment = Alignment.Center, modifier = Modifier.height(22.dp)) {
+        AsyncImage(
+            model = "${com.example.lmsnowplaying.settings.AppConfig.current.lmsUrl}/material/svg/$service?c=fff",
+            imageLoader = imageLoader,
+            contentDescription = service,
+            onSuccess = { logo = 1 },
+            onError = { logo = 2 },
+            modifier = Modifier.size(22.dp)
+        )
+        if (logo == 2) {
+            Text(
+                text = service.replaceFirstChar { it.uppercase() },
+                color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp, maxLines = 1,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color.White.copy(alpha = 0.15f))
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
+            )
         }
     }
 }
@@ -2114,6 +2407,7 @@ private fun AlbumList(
             ThumbRow(
                 text = albums[index].name,
                 subtitle = albums[index].subtitle,
+                service = albums[index].service,
                 imageUrl = coverUrl(albums[index].artworkId),
                 placeholder = Icons.Outlined.MusicNote,
                 round = false,
@@ -2290,8 +2584,7 @@ private fun TrackList(albumId: String, listState: LazyListState, selectedTrackId
     val selectedIndex = list.indexOfFirst { it.id == selectedTrackId }
     LaunchedEffect(list) {
         if (selectedIndex >= 0) {
-            // +2: the two album rows come before the tracks
-            listState.scrollToItem(selectedIndex + 2)
+            listState.scrollToItem(selectedIndex)
             try { selectedFocus.requestFocus() } catch (_: Exception) { }
         } else {
             listState.scrollToItem(0)
@@ -2299,29 +2592,30 @@ private fun TrackList(albumId: String, listState: LazyListState, selectedTrackId
         }
     }
 
-    HintLazyColumn(state = listState) {
-        // Two rows for the whole album first, then the tracks.
-        item {
-            BrowseRow(
-                text = stringResource(R.string.folder_play_album),
-                modifier = Modifier.focusRequester(firstFocus),
-                onClick = { runAlbum("load", context.getString(R.string.folder_album_playing)) }
-            )
-        }
-        item {
-            BrowseRow(
-                text = stringResource(R.string.folder_add_album),
-                onClick = { runAlbum("add", context.getString(R.string.folder_album_added)) }
-            )
-        }
-        items(list.size) { index ->
-            val track = list[index]
-            BrowseRow(
-                text = if (track.trackNum > 0) "${track.trackNum}. ${track.title}" else track.title,
-                subtitle = track.subtitle,
-                onClick = { onTrack(track) },
-                modifier = if (index == selectedIndex) Modifier.focusRequester(selectedFocus) else Modifier,
-            )
+    // The icons stay in place above the list while it scrolls
+    Column {
+        IconActionRow(
+            listOf(
+                Triple(ActionPlayIcon, stringResource(R.string.action_play_now), { runAlbum("load", context.getString(R.string.folder_album_playing)) }),
+                Triple(ActionNextIcon, stringResource(R.string.action_play_next), { runAlbum("insert", context.getString(R.string.folder_album_next)) }),
+                Triple(ActionAddIcon, stringResource(R.string.action_add_end), { runAlbum("add", context.getString(R.string.folder_album_added)) }),
+            ),
+            firstFocus,
+            buttonSize = 40.dp,
+            iconSize = 22.dp,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            wrapLeft = false,
+        )
+        HintLazyColumn(state = listState) {
+            items(list.size) { index ->
+                val track = list[index]
+                BrowseRow(
+                    text = if (track.trackNum > 0) "${track.trackNum}. ${track.title}" else track.title,
+                    subtitle = track.subtitle,
+                    onClick = { onTrack(track) },
+                    modifier = if (index == selectedIndex) Modifier.focusRequester(selectedFocus) else Modifier,
+                )
+            }
         }
     }
 }
@@ -2342,11 +2636,100 @@ private fun TrackActions(track: BrowseTrack, onDone: () -> Unit) {
     val firstFocus = remember { FocusRequester() }
     LaunchedEffect(track) { firstFocus.requestFocus() }
 
-    Column {
-        BrowseRow(stringResource(R.string.action_play_now), modifier = Modifier.focusRequester(firstFocus),
-            onClick = { run("load", context.getString(R.string.track_playing)) })
-        BrowseRow(stringResource(R.string.action_play_next), onClick = { run("insert", context.getString(R.string.track_next)) })
-        BrowseRow(stringResource(R.string.action_add_end), onClick = { run("add", context.getString(R.string.track_added)) })
+    val imageLoader = rememberLmsImageLoader()
+    Row(modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)) {
+        // Cover (a track id works as cover id too) and artist · album, so the menu says which track it is for
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier.size(72.dp).clip(RoundedCornerShape(6.dp)).background(Color.White.copy(alpha = 0.1f))
+        ) {
+            Icon(Icons.Outlined.MusicNote, contentDescription = null, tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(28.dp))
+            val url = coverUrl(track.coverId.ifBlank { track.id })
+            if (url != null) {
+                AsyncImage(
+                    model = ImageRequest.Builder(context).data(url).crossfade(true).build(),
+                    imageLoader = imageLoader,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        }
+        Column(modifier = Modifier.padding(start = 12.dp)) {
+            if (track.subtitle.isNotBlank()) {
+                Text(track.subtitle, color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+            IconActionRow(
+                listOf(
+                    Triple(ActionPlayIcon, stringResource(R.string.action_play_now), { run("load", context.getString(R.string.track_playing)) }),
+                    Triple(ActionNextIcon, stringResource(R.string.action_play_next), { run("insert", context.getString(R.string.track_next)) }),
+                    Triple(ActionAddIcon, stringResource(R.string.action_add_end), { run("add", context.getString(R.string.track_added)) }),
+                ),
+                firstFocus,
+                buttonSize = 40.dp,
+                iconSize = 22.dp,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+    }
+}
+
+// Actions as icons side by side (left/right to move, OK to run); the name of the
+// action that has the focus is shown below the row.
+@Composable
+internal fun IconActionRow(
+    actions: List<Triple<ImageVector, String, () -> Unit>>,
+    firstFocus: FocusRequester,
+    buttonSize: Dp = 48.dp,
+    iconSize: Dp = 26.dp,
+    modifier: Modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+    wrapLeft: Boolean = true,
+) {
+    var focusedIndex by remember { mutableIntStateOf(0) }
+    // The name of the action fades out after a few seconds
+    var captionShown by remember { mutableStateOf(true) }
+    LaunchedEffect(focusedIndex) {
+        captionShown = true
+        kotlinx.coroutines.delay(3000)
+        captionShown = false
+    }
+    val others = remember(actions.size) { List(actions.size) { FocusRequester() } }
+    val target: (Int) -> FocusRequester = { if (it == 0) firstFocus else others[it] }
+    Column(modifier = modifier) {
+        Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp)) {
+            actions.forEachIndexed { index, (icon, label, onClick) ->
+                val interactionSource = remember { MutableInteractionSource() }
+                val focused by interactionSource.collectIsFocusedAsState()
+                LaunchedEffect(focused) { if (focused) focusedIndex = index }
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.focusRequester(target(index))
+                        // Left/right wrap around, so the row never lets the focus go
+                        .onPreviewKeyEvent { event ->
+                            if (event.type != androidx.compose.ui.input.key.KeyEventType.KeyDown) false
+                            else when (event.key) {
+                                androidx.compose.ui.input.key.Key.DirectionRight -> { target((index + 1) % actions.size).requestFocus(); true }
+                                androidx.compose.ui.input.key.Key.DirectionLeft ->
+                                    if (index == 0 && !wrapLeft) false
+                                    else { target((index + actions.size - 1) % actions.size).requestFocus(); true }
+                                else -> false
+                            }
+                        }
+                        .size(buttonSize)
+                        .clip(CircleShape)
+                        .background(if (focused) Color.White.copy(alpha = 0.3f) else Color.White.copy(alpha = 0.08f))
+                        .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
+                ) {
+                    Icon(imageVector = icon, contentDescription = label, tint = Color.White, modifier = Modifier.size(iconSize))
+                }
+            }
+        }
+        Text(
+            text = actions.getOrNull(focusedIndex)?.second ?: "",
+            color = Color.White.copy(alpha = if (captionShown) 0.7f else 0f),
+            fontSize = 12.sp,
+            modifier = Modifier.padding(top = 6.dp, start = 4.dp)
+        )
     }
 }
 
