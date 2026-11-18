@@ -1777,6 +1777,28 @@ object LMS{
         }
     }
 
+    // Genres MusicIP leaves out of a mix (a list in the player's prefs; an empty list is a real value, no fallback)
+    suspend fun getMusicIpExcludedGenres(): List<String>? {
+        val mac = playerMac
+        if (mac == "00:00:00:00:00:00") return null
+        return safeCall<List<String>?>("getMusicIpExcludedGenres", null) {
+            val value = rpcPlayer(mac, listOf("playerpref", "plugin.musicip:mix_genre_filter", "?")).opt("_p2")
+            when (value) {
+                is JSONArray -> (0 until value.length()).map { value.optString(it) }
+                is String -> if (value.isBlank()) emptyList() else listOf(value)
+                else -> emptyList()
+            }
+        }
+    }
+
+    suspend fun setMusicIpExcludedGenres(genres: List<String>) {
+        val mac = playerMac
+        if (mac == "00:00:00:00:00:00") return
+        safeCall("setMusicIpExcludedGenres", Unit) {
+            rpcPlayer(mac, listOf("playerpref", "plugin.musicip:mix_genre_filter", JSONArray(genres))); Unit
+        }
+    }
+
     // The MusicIP filters, asked from MusicIP itself (its /api/filters), at the address in the plugin's
     // settings; localhost there means the Lyrion server. Null when MusicIP cannot be reached.
     var musicIpFiltersAddress: String = ""

@@ -107,6 +107,9 @@
     <string name="musicip_set_reject">Reject size</string>
     <string name="musicip_set_reject_unit">Reject unit</string>
     <string name="musicip_set_filter">Mix filter</string>
+    <string name="musicip_set_genres">Excluded genres</string>
+    <string name="musicip_genres_all">Select all</string>
+    <string name="musicip_genres_clear">Select none</string>
     <string name="musicip_none">(None)</string>
     <string name="musicip_yes">Yes</string>
     <string name="musicip_no">No</string>

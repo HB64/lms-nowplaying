@@ -1083,8 +1083,6 @@ private fun FavoritesList(
                 Triple(ActionAddIcon, stringResource(R.string.action_add_end), { runFolder("add", context.getString(R.string.fav_added)) }),
             ),
             firstFocus,
-            buttonSize = 40.dp,
-            iconSize = 22.dp,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
             wrapLeft = false,
         )
@@ -1132,7 +1130,7 @@ private fun FavoriteActions(favorite: BrowseItem, onDone: () -> Unit, plugin: St
         add(Triple(ActionAddIcon, stringResource(R.string.action_add_end), { run("add", context.getString(R.string.fav_item_added)) }))
         if (onOpen != null) add(Triple(ActionBrowseIcon, stringResource(R.string.action_browse), onOpen))
     }
-    IconActionRow(actions, firstFocus, buttonSize = 40.dp, iconSize = 22.dp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+    IconActionRow(actions, firstFocus, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
 }
 
 // The saved playlists of the server.
@@ -1280,10 +1278,58 @@ private fun MusicIpSettingsList() {
     var picking by remember { mutableStateOf(false) }
     val filterRowFocus = remember { FocusRequester() }
     var wasPicking by remember { mutableStateOf(false) }
-    BackHandler(enabled = picking) { picking = false }
+    // Excluded genres: a list to tick (ticked = left out of the mix); each change is sent after a short pause
+    var excluded by remember { mutableStateOf<List<String>?>(null) }
+    var allGenres by remember { mutableStateOf<List<String>?>(null) }
+    var pickingGenres by remember { mutableStateOf(false) }
+    val genreRowFocus = remember { FocusRequester() }
+    var wasPickingGenres by remember { mutableStateOf(false) }
+    var genreSendJob by remember { mutableStateOf<Job?>(null) }
+    LaunchedEffect(Unit) { excluded = withContext(Dispatchers.IO) { LMS.getMusicIpExcludedGenres() } ?: emptyList() }
+    BackHandler(enabled = picking || pickingGenres) { picking = false; pickingGenres = false }
     LaunchedEffect(picking) {
         if (!picking && wasPicking) { try { filterRowFocus.requestFocus() } catch (_: Exception) { } }
         wasPicking = picking
+    }
+    LaunchedEffect(pickingGenres) {
+        if (!pickingGenres && wasPickingGenres) { try { genreRowFocus.requestFocus() } catch (_: Exception) { } }
+        wasPickingGenres = pickingGenres
+    }
+    if (pickingGenres) {
+        val names = allGenres
+        val ticked = excluded ?: emptyList()
+        if (names == null) {
+            Text(stringResource(R.string.common_loading), color = Color.White.copy(alpha = 0.7f), fontSize = 14.sp, modifier = Modifier.padding(start = 12.dp))
+            return
+        }
+        val pickFocus = remember { FocusRequester() }
+        LaunchedEffect(Unit) { try { pickFocus.requestFocus() } catch (_: Exception) { } }
+        val change = { next: List<String> ->
+            excluded = next
+            genreSendJob?.cancel()
+            genreSendJob = scope.launch {
+                kotlinx.coroutines.delay(500)
+                withContext(Dispatchers.IO) { LMS.setMusicIpExcludedGenres(next) }
+            }
+        }
+        HintLazyColumn {
+            item {
+                BrowseRow(stringResource(R.string.musicip_genres_clear), modifier = Modifier.focusRequester(pickFocus), onClick = { change(emptyList()) })
+            }
+            item {
+                BrowseRow(stringResource(R.string.musicip_genres_all), onClick = { change(names) })
+            }
+            items(names.size) { index ->
+                val name = names[index]
+                val on = ticked.any { it.equals(name, ignoreCase = true) }
+                BrowseRow(
+                    text = name,
+                    trailing = if (on) "☑" else "☐",
+                    onClick = { change(if (on) ticked.filterNot { it.equals(name, ignoreCase = true) } else ticked + name) }
+                )
+            }
+        }
+        return
     }
     if (picking) {
         val list = filters
@@ -1320,6 +1366,19 @@ private fun MusicIpSettingsList() {
         item { MusicIpCycleRow(stringResource(R.string.musicip_set_genre), listOf(stringResource(R.string.musicip_no), stringResource(R.string.musicip_yes)), s.genre, "mix_genre") }
         item { MusicIpSliderRow(stringResource(R.string.musicip_set_reject), s.rejectSize.coerceIn(0, 200), 0, 200, "reject_size") }
         item { MusicIpCycleRow(stringResource(R.string.musicip_set_reject_unit), unitNames, s.rejectType, "reject_type") }
+        item {
+            BrowseRow(
+                text = stringResource(R.string.musicip_set_genres),
+                trailing = excluded?.size?.takeIf { it > 0 }?.toString() ?: noneLabel,
+                modifier = Modifier.focusRequester(genreRowFocus),
+                onClick = {
+                    pickingGenres = true
+                    scope.launch {
+                        if (allGenres == null) allGenres = withContext(Dispatchers.IO) { LMS.getGenres() }.map { it.name }
+                    }
+                }
+            )
+        }
         item {
             BrowseRow(
                 text = stringResource(R.string.musicip_set_filter),
@@ -1431,7 +1490,7 @@ private fun TrackDetailList(
     Column {
     if (headerActions != null) {
         // Left on the first icon is one step back, like on every list
-        IconActionRow(headerActions, firstFocus, buttonSize = 40.dp, iconSize = 22.dp, wrapLeft = false)
+        IconActionRow(headerActions, firstFocus, wrapLeft = false)
     }
     HintLazyColumn(state = listState) {
         items(list.size) { index ->
@@ -1722,7 +1781,7 @@ private fun MixPanel(onMusicIp: () -> Unit) {
                     add(Triple(SettingsMenuIcon, stringResource(R.string.menu_settings), { settingsOpen = !settingsOpen }))
                 }
             }
-            IconActionRow(actions, rowFocus, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+            IconActionRow(actions, rowFocus, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
         }
     HintLazyColumn(state = listState) {
         items(shown.size) { index ->
@@ -2601,8 +2660,6 @@ private fun TrackList(albumId: String, listState: LazyListState, selectedTrackId
                 Triple(ActionAddIcon, stringResource(R.string.action_add_end), { runAlbum("add", context.getString(R.string.folder_album_added)) }),
             ),
             firstFocus,
-            buttonSize = 40.dp,
-            iconSize = 22.dp,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
             wrapLeft = false,
         )
@@ -2666,8 +2723,6 @@ private fun TrackActions(track: BrowseTrack, onDone: () -> Unit) {
                     Triple(ActionAddIcon, stringResource(R.string.action_add_end), { run("add", context.getString(R.string.track_added)) }),
                 ),
                 firstFocus,
-                buttonSize = 40.dp,
-                iconSize = 22.dp,
                 modifier = Modifier.padding(top = 4.dp),
             )
         }
@@ -2680,8 +2735,8 @@ private fun TrackActions(track: BrowseTrack, onDone: () -> Unit) {
 internal fun IconActionRow(
     actions: List<Triple<ImageVector, String, () -> Unit>>,
     firstFocus: FocusRequester,
-    buttonSize: Dp = 48.dp,
-    iconSize: Dp = 26.dp,
+    buttonSize: Dp = 32.dp,
+    iconSize: Dp = 18.dp,
     modifier: Modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
     wrapLeft: Boolean = true,
 ) {

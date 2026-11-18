@@ -182,8 +182,6 @@ fun QueuePanel() {
                             }),
                         ),
                         moveFocus,
-                        buttonSize = 36.dp,
-                        iconSize = 20.dp,
                         modifier = Modifier.padding(bottom = 4.dp).onKeyEvent { e ->
                             if (e.type == KeyEventType.KeyDown && (e.key == Key.DirectionLeft || e.key == Key.DirectionDown)) {
                                 try { currentFocus.requestFocus() } catch (_: Exception) { }
@@ -240,8 +238,6 @@ fun QueuePanel() {
                         }),
                     ),
                     actionFocus,
-                    buttonSize = 40.dp,
-                    iconSize = 22.dp,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                     wrapLeft = false,
                 )
