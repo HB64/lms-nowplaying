@@ -159,6 +159,16 @@
     <string name="action_play_now">Play now</string>
     <string name="action_play_next">Play next</string>
     <string name="action_add_end">Add to end</string>
+    <string name="action_favorite">Add to favorites</string>
+    <string name="action_delete_favorite">Delete</string>
+    <string name="action_unfavorite">Remove from favorites</string>
+    <string name="fav_removed">Removed from favorites</string>
+    <string name="fav_remove_failed">Cannot remove this favorite</string>
+    <string name="action_rename">Rename</string>
+    <string name="fav_renamed">Favorite renamed</string>
+    <string name="fav_rename_failed">Cannot rename this favorite</string>
+    <string name="fav_saved">Saved to favorites</string>
+    <string name="fav_save_failed">Cannot save this as a favorite</string>
     <string name="mix_no_plugins">No mix plugins found</string>
     <string name="mix_start_new">Start new mix</string>
     <string name="mix_started">Mix started</string>

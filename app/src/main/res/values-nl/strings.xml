@@ -159,6 +159,16 @@
     <string name="action_play_now">Nu afspelen</string>
     <string name="action_play_next">Hierna afspelen</string>
     <string name="action_add_end">Achteraan toevoegen</string>
+    <string name="action_favorite">Toevoegen aan favorieten</string>
+    <string name="action_delete_favorite">Wissen</string>
+    <string name="action_unfavorite">Uit favorieten verwijderen</string>
+    <string name="fav_removed">Verwijderd uit favorieten</string>
+    <string name="fav_remove_failed">Kan deze favoriet niet verwijderen</string>
+    <string name="action_rename">Hernoemen</string>
+    <string name="fav_renamed">Favoriet hernoemd</string>
+    <string name="fav_rename_failed">Kan deze favoriet niet hernoemen</string>
+    <string name="fav_saved">Opgeslagen bij favorieten</string>
+    <string name="fav_save_failed">Kan dit niet als favoriet opslaan</string>
     <string name="mix_no_plugins">Geen mix-plugins gevonden</string>
     <string name="mix_start_new">Nieuwe mix starten</string>
     <string name="mix_started">Mix gestart</string>

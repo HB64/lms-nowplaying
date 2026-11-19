@@ -502,7 +502,7 @@ fun SettingsScreen(
                                                 defaultPlayerName = p?.first ?: ""
                                                 defaultPlayerMac = p?.second ?: ""
                                                 if (defaultPlayerMac.isEmpty()) onlyControlDefault = false
-                                                popup = ""
+                                                // The list stays open (Left or Back closes it), so players can be hidden right after
                                                 persist()
                                                 refreshPlayersNow()
                                             }

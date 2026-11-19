@@ -51,6 +51,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.lmsnowplaying.network.logitechmediaserver.LMS
+import com.example.lmsnowplaying.settings.AppConfig
 import com.example.lmsnowplaying.network.logitechmediaserver.QueueList
 import com.example.lmsnowplaying.network.logitechmediaserver.QueueTrack
 import com.example.lmsnowplaying.settings.NavState
@@ -193,24 +194,28 @@ fun QueuePanel() {
                 }
             }
             if (pickPlayer) {
-                val others = LMS.players.filter { it.second != LMS.playerMac }
+                // Players hidden in the main menu are left out here too
+                val others = LMS.players.filter { it.second != LMS.playerMac && it.second !in AppConfig.current.hiddenPlayers }
                 if (others.isEmpty()) {
                     Text(stringResource(R.string.queue_move_none), color = Color.White.copy(alpha = 0.7f), fontSize = 14.sp, modifier = Modifier.padding(start = 12.dp))
                 }
-                others.forEachIndexed { i, p ->
-                    QueueRow(p.first, false, if (i == 0) Modifier.focusRequester(actionFocus) else Modifier) {
-                        scope.launch {
-                            val ok = withContext(Dispatchers.IO) { LMS.transferQueue(p.second) }
-                            Toast.makeText(
-                                context,
-                                if (ok) context.getString(R.string.queue_moved, p.first) else context.getString(R.string.queue_move_failed),
-                                Toast.LENGTH_LONG
-                            ).show()
-                            if (ok) {
-                                // The queue lives on that player now: follow it
-                                LMS.setPlayer(p.first, p.second)
-                                NavState.showQueue = false
-                            } else pickPlayer = false
+                // Scrolls when there are more players than fit
+                HintLazyColumn {
+                    itemsIndexed(others) { i, p ->
+                        QueueRow(p.first, false, if (i == 0) Modifier.focusRequester(actionFocus) else Modifier) {
+                            scope.launch {
+                                val ok = withContext(Dispatchers.IO) { LMS.transferQueue(p.second) }
+                                Toast.makeText(
+                                    context,
+                                    if (ok) context.getString(R.string.queue_moved, p.first) else context.getString(R.string.queue_move_failed),
+                                    Toast.LENGTH_LONG
+                                ).show()
+                                if (ok) {
+                                    // The queue lives on that player now: follow it
+                                    LMS.setPlayer(p.first, p.second)
+                                    NavState.showQueue = false
+                                } else pickPlayer = false
+                            }
                         }
                     }
                 }
@@ -260,7 +265,12 @@ fun QueuePanel() {
                         val realCover = track.coverId.isNotBlank() && track.coverId.toLongOrNull() == null
                         ThumbRow(
                             text = (if (isCurrent) "▶ " else "") + label,
-                            imageUrl = if (realCover) coverUrl(track.coverId) else null,
+                            imageUrl = when {
+                                realCover -> coverUrl(track.coverId)
+                                track.artworkUrl.startsWith("http") -> track.artworkUrl
+                                track.artworkUrl.isNotBlank() -> "${AppConfig.current.lmsUrl}/" + track.artworkUrl.trimStart('/')
+                                else -> null
+                            },
                             placeholder = Icons.Outlined.MusicNote,
                             round = false,
                             imageLoader = imageLoader,

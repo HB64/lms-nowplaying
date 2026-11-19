@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.outlined.Apps
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.MusicNote
@@ -137,6 +138,8 @@ private fun restoreBrowse(section: String): Pair<BrowseLevel, List<BrowseLevel>>
     "ARTISTS", "GENRES", "FOLDER", "FAVORITES", "PLAYLISTS", "SEARCH", "NEW_MUSIC", "ALBUM_ARTISTS", "COMPOSERS", "YEARS", "RELEASES" ->
         BrowseLevel.valueOf(section) to listOf(BrowseLevel.ROOT, BrowseLevel.MY_MUSIC)
     "RADIO", "MIX" -> BrowseLevel.valueOf(section) to listOf(BrowseLevel.ROOT)
+    // Apps are browsed with the radio levels
+    "APPS" -> BrowseLevel.RADIO to listOf(BrowseLevel.ROOT)
     "MUSICIP_MOODS" -> BrowseLevel.MUSICIP_MOODS to listOf(BrowseLevel.ROOT, BrowseLevel.MIX)
     else -> BrowseLevel.ROOT to emptyList()
 }
@@ -159,12 +162,12 @@ private val ignoredArticles = Regex("^(the|el|la|los|las|le|les)\\s+", RegexOpti
 fun BrowseScreen() {
     val appContext = LocalContext.current.applicationContext
     // Open where it was left last time
-    val restored = remember { restoreBrowse(NavState.lastBrowse) }
+    val startSection = remember { NavState.lastBrowse }
+    val restored = remember { restoreBrowse(startSection) }
     var level by remember { mutableStateOf(restored.first) }
     // Where we came from, so Back/left retraces the actual route (also when
     // an artist/album was reached through Search instead of the artist list).
     val stack = remember { mutableStateListOf<BrowseLevel>().apply { addAll(restored.second) } }
-    LaunchedEffect(level) { NavState.lastBrowse = browseSection(level) }
     val go: (BrowseLevel) -> Unit = { to ->
         stack.add(level)
         level = to
@@ -253,8 +256,16 @@ fun BrowseScreen() {
     // plugins, then the levels inside the chosen plugin) and that plugin's command.
     val radioPath = remember {
         mutableStateListOf<BrowseItem>().apply {
-            if (restored.first == BrowseLevel.RADIO) add(BrowseItem("", appContext.getString(R.string.browse_radio)))
+            if (restored.first == BrowseLevel.RADIO) {
+                if (startSection == "APPS") add(BrowseItem("apps", appContext.getString(R.string.browse_apps)))
+                else add(BrowseItem("", appContext.getString(R.string.browse_radio)))
+            }
         }
+    }
+    // Remember where we are; Apps and Radio share their levels but are separate sections
+    LaunchedEffect(level) {
+        val section = browseSection(level)
+        NavState.lastBrowse = if (section == "RADIO" && radioPath.firstOrNull()?.id == "apps") "APPS" else section
     }
     var radioCmd by remember { mutableStateOf("") }
     var actionRadio by remember { mutableStateOf<BrowseItem?>(null) }
@@ -561,6 +572,8 @@ fun BrowseScreen() {
                     FavoritesList(
                         folder = folder,
                         onFolder = { favPath.add(it) },
+                        onAlbum = chooseAlbum,
+                        onRemoved = { if (favPath.size > 1) favPath.removeAt(favPath.size - 1) },
                         onItem = {
                             actionFavorite = it
                             go(BrowseLevel.FAVORITE_ACTIONS)
@@ -850,10 +863,23 @@ private fun RadioList(
 
     val imageLoader = rememberLmsImageLoader()
     val firstFocus = remember { FocusRequester() }
+    val rowFocus = remember { FocusRequester() }
+    // An opened playable item (album, playlist, stream) has play icons pinned above its list
+    val folderActions = !atRoot && path.lastOrNull()?.openable == true
+    // Favorite id and name while the rename field (after saving the opened item) is shown
+    var rename by remember(folderId) { mutableStateOf<Pair<String, String>?>(null) }
     LaunchedEffect(atRoot, path.size, folderId, shownCount) {
-        try { firstFocus.requestFocus() } catch (_: Exception) { }
+        try { (if (folderActions) rowFocus else firstFocus).requestFocus() } catch (_: Exception) { }
     }
 
+    Column {
+    if (folderActions) {
+        IconActionRow(
+            playActions(folderId, cmd, {}, onSaved = { id, title -> rename = id to title }),
+            rowFocus, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+        )
+        rename?.let { (id, name) -> RenameFavoriteField(id, name) { rename = null } }
+    }
     HintLazyColumn {
         if (atRoot) {
             val list = radios ?: emptyList()
@@ -864,14 +890,23 @@ private fun RadioList(
                     else onRadio(radio.cmd, radio.name)
                 }
                 if (radio.icon.isNotBlank()) {
+                    // A plugin icon "…_svg.png" has a one-colour svg beside it: shown in white, like Material does
+                    // Radio Paradise ships no "_svg.png"; Material has its own svg for it
+                    val svgPath = when {
+                        radio.icon.endsWith("_svg.png") -> radio.icon.removeSuffix("_svg.png") + ".svg"
+                        radio.name.equals("Radio Paradise", ignoreCase = true) -> "material/svg/radioparadise"
+                        else -> null
+                    }
                     ThumbRow(
                         text = radio.name,
-                        imageUrl = radioImageUrl(radio.icon),
+                        imageUrl = radioImageUrl(svgPath ?: radio.icon),
                         placeholder = Icons.Outlined.Apps,
                         round = false,
                         imageLoader = imageLoader,
                         onClick = { open() },
                         modifier = if (index == 0) Modifier.focusRequester(firstFocus) else Modifier,
+                        tintWhite = svgPath != null,
+                        fallbackUrl = radioImageUrl(radio.icon),
                     )
                 } else {
                     BrowseRow(
@@ -896,6 +931,7 @@ private fun RadioList(
             }
         }
     }
+    }
 }
 
 // A row of a radio level: a search entry, a station with its logo, or just the name.
@@ -908,10 +944,10 @@ private fun RadioEntryRow(
     onFolder: (BrowseItem) -> Unit,
     onItem: (BrowseItem) -> Unit,
 ) {
-    // A playable item (album, track) opens the play menu even when it has items below it
+    // An item with items below it opens its list (like Lyrion); if it is also playable, the list gets play icons on top
     val open = {
-        if (entry.isFolder && !entry.isAudio) onFolder(BrowseItem(entry.id, entry.name))
-        else onItem(BrowseItem(entry.id, entry.name, openable = entry.isFolder))
+        if (entry.isFolder) onFolder(BrowseItem(entry.id, entry.name, openable = entry.isAudio))
+        else onItem(BrowseItem(entry.id, entry.name))
     }
     when {
         entry.isSearch -> BrowseRow(entry.name, icon = SearchIcon, modifier = modifier, onClick = { onSearch(entry) })
@@ -1036,6 +1072,8 @@ private fun RadioSearch(
 private fun FavoritesList(
     folder: BrowseItem,
     onFolder: (BrowseItem) -> Unit,
+    onAlbum: (BrowseItem) -> Unit,
+    onRemoved: () -> Unit,
     onItem: (BrowseItem) -> Unit,
 ) {
     var entries by remember(folder.id) { mutableStateOf<List<FavoriteEntry>?>(null) }
@@ -1077,15 +1115,34 @@ private fun FavoritesList(
     // In a folder the icons for the whole folder stay in place above the list
     Column {
     if (hasActions) {
+        // A playable favorite with items below it (album, playlist) also gets rename and remove; a real folder only play and add
+        var rename by remember(folder.id) { mutableStateOf<Pair<String, String>?>(null) }
+        val actions = if (folder.openable) buildList<Triple<ImageVector, String, () -> Unit>> {
+            addAll(playActions(folder.id, "favorites", {}))
+            add(Triple(Icons.Outlined.Edit, stringResource(R.string.action_rename), { rename = folder.id to folder.name }))
+            add(Triple(ActionDeleteIcon, stringResource(R.string.action_delete_favorite), {
+                scope.launch {
+                    val ok = withContext(Dispatchers.IO) { LMS.removeFavorite(folder.id) }
+                    Toast.makeText(context, context.getString(if (ok) R.string.fav_removed else R.string.fav_remove_failed), Toast.LENGTH_SHORT).show()
+                    if (ok) onRemoved()
+                }
+            }))
+        } else listOf(
+            Triple(ActionPlayIcon, stringResource(R.string.action_play_now), { runFolder("load", context.getString(R.string.fav_playing)) }),
+            Triple(ActionAddIcon, stringResource(R.string.action_add_end), { runFolder("add", context.getString(R.string.fav_added)) }),
+        )
         IconActionRow(
-            listOf(
-                Triple(ActionPlayIcon, stringResource(R.string.action_play_now), { runFolder("load", context.getString(R.string.fav_playing)) }),
-                Triple(ActionAddIcon, stringResource(R.string.action_add_end), { runFolder("add", context.getString(R.string.fav_added)) }),
-            ),
+            actions,
             firstFocus,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
             wrapLeft = false,
         )
+        rename?.let { (id, name) ->
+            RenameFavoriteField(id, name) { renamed ->
+                rename = null
+                if (renamed) onRemoved()
+            }
+        }
     }
     HintLazyColumn(state = listState) {
         items(list.size) { index ->
@@ -1097,8 +1154,17 @@ private fun FavoritesList(
                 round = false,
                 imageLoader = imageLoader,
                 onClick = {
-                    if (entry.isFolder) onFolder(BrowseItem(entry.id, entry.name))
-                    else onItem(BrowseItem(entry.id, entry.name))
+                    val openEntry = {
+                        if (entry.isFolder) onFolder(BrowseItem(entry.id, entry.name, openable = entry.isAudio))
+                        else onItem(BrowseItem(entry.id, entry.name))
+                    }
+                    if (entry.url.startsWith("db:album.title=")) {
+                        // A favorite album of the library opens as the album itself
+                        scope.launch {
+                            val albumId = withContext(Dispatchers.IO) { LMS.albumIdFromFavoriteUrl(entry.url) }
+                            if (albumId != null) onAlbum(BrowseItem(albumId, entry.name)) else openEntry()
+                        }
+                    } else openEntry()
                 },
                 modifier = (if (!hasActions && index == startIndex) Modifier.focusRequester(firstFocus) else Modifier).trackFocus(memKey, index)
             )
@@ -1107,30 +1173,160 @@ private fun FavoritesList(
     }
 }
 
-// Action menu for one favorite: play now / next / add to the end.
+// The heart that adds something to the favorites (plus) or removes it again (minus). source gives the
+// address and name; onSaved: it was just added (favorites id and name), e.g. to offer a new name.
 @Composable
-private fun FavoriteActions(favorite: BrowseItem, onDone: () -> Unit, plugin: String = "favorites", onOpen: (() -> Unit)? = null) {
+private fun favoriteHeartAction(
+    key: Any,
+    source: suspend () -> LMS.FavTarget?,
+    onSaved: (String, String) -> Unit = { _, _ -> },
+): Triple<ImageVector, String, () -> Unit> {
+    val context = LocalContext.current.applicationContext
+    val scope = rememberCoroutineScope()
+    // The id in the favorites when it is one already (heart with minus), else null (heart with plus)
+    var favoriteId by remember(key) { mutableStateOf<String?>(null) }
+    LaunchedEffect(key) {
+        favoriteId = withContext(Dispatchers.IO) { source()?.let { LMS.favoriteIdOf(it) } }
+    }
+    val toggle: () -> Unit = {
+        scope.launch {
+            val current = favoriteId
+            if (current != null) {
+                val ok = withContext(Dispatchers.IO) { LMS.removeFavorite(current) }
+                if (ok) favoriteId = null
+                Toast.makeText(context, context.getString(if (ok) R.string.fav_removed else R.string.fav_remove_failed), Toast.LENGTH_SHORT).show()
+            } else {
+                val target = withContext(Dispatchers.IO) { source() }
+                val saved = target != null && withContext(Dispatchers.IO) { LMS.addFavorite(target) }
+                if (target == null || !saved) {
+                    Toast.makeText(context, context.getString(R.string.fav_save_failed), Toast.LENGTH_SHORT).show()
+                } else {
+                    val newId = withContext(Dispatchers.IO) { LMS.favoriteIdOf(target) }
+                    favoriteId = newId
+                    Toast.makeText(context, context.getString(R.string.fav_saved), Toast.LENGTH_SHORT).show()
+                    if (newId != null) onSaved(newId, target.title)
+                }
+            }
+        }
+    }
+    val isFavorite = favoriteId != null
+    return Triple(
+        if (isFavorite) ActionFavoriteRemoveIcon else ActionFavoriteAddIcon,
+        stringResource(if (isFavorite) R.string.action_unfavorite else R.string.action_favorite),
+        toggle
+    )
+}
+
+// The icons play now / play next / add to the end for one item of a plugin or of the favorites, plus the
+// heart (add to / remove from favorites) for plugin items. onSaved: a favorite was just added (its id and name).
+@Composable
+private fun playActions(
+    id: String,
+    plugin: String,
+    onDone: () -> Unit,
+    onSaved: (String, String) -> Unit = { _, _ -> },
+): List<Triple<ImageVector, String, () -> Unit>> {
     val context = LocalContext.current.applicationContext
     val scope = rememberCoroutineScope()
     val run: (String, String) -> Unit = { cmd, message ->
         scope.launch {
-            val ok = withContext(Dispatchers.IO) { LMS.favoritesControl(cmd, favorite.id, plugin) }
+            val ok = withContext(Dispatchers.IO) { LMS.favoritesControl(cmd, id, plugin) }
             Toast.makeText(context, if (ok) message else context.getString(R.string.common_no_player), Toast.LENGTH_SHORT).show()
         }
         onDone()
     }
-
-    val firstFocus = remember { FocusRequester() }
-    LaunchedEffect(favorite) { firstFocus.requestFocus() }
-
-    // Icons side by side; the last one (if any) looks at what is inside (the tracks of an album)
-    val actions = buildList<Triple<ImageVector, String, () -> Unit>> {
+    // Not for the favorites themselves: they are saved already
+    val heart = if (plugin != "favorites") favoriteHeartAction(id to plugin, { LMS.pluginFavTarget(plugin, id) }, onSaved) else null
+    return buildList {
         add(Triple(ActionPlayIcon, stringResource(R.string.action_play_now), { run("load", context.getString(R.string.fav_item_playing)) }))
         add(Triple(ActionNextIcon, stringResource(R.string.action_play_next), { run("insert", context.getString(R.string.fav_item_next)) }))
         add(Triple(ActionAddIcon, stringResource(R.string.action_add_end), { run("add", context.getString(R.string.fav_item_added)) }))
+        if (heart != null) add(heart)
+    }
+}
+
+// Text field with the current name of a favorite; Done renames it. onFinished(true) when it was renamed.
+@Composable
+private fun RenameFavoriteField(favoriteId: String, current: String, onFinished: (Boolean) -> Unit) {
+    val context = LocalContext.current.applicationContext
+    val scope = rememberCoroutineScope()
+    val keyboard = LocalSoftwareKeyboardController.current
+    val fieldFocus = remember { FocusRequester() }
+    var name by remember(favoriteId, current) { mutableStateOf(current) }
+    LaunchedEffect(favoriteId) { try { fieldFocus.requestFocus() } catch (_: Exception) { } }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 8.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(Color.White.copy(alpha = 0.12f))
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+    ) {
+        BasicTextField(
+            value = name,
+            onValueChange = { name = it; NavState.lastTyped = System.currentTimeMillis() },
+            singleLine = true,
+            textStyle = TextStyle(color = Color.White, fontSize = 14.sp),
+            cursorBrush = SolidColor(Color.White),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = {
+                keyboard?.hide()
+                val title = name.trim()
+                if (title.isEmpty() || title == current) onFinished(false)
+                else scope.launch {
+                    val ok = withContext(Dispatchers.IO) { LMS.renameFavorite(favoriteId, title) }
+                    Toast.makeText(context, context.getString(if (ok) R.string.fav_renamed else R.string.fav_rename_failed), Toast.LENGTH_SHORT).show()
+                    onFinished(ok)
+                }
+            }),
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusRequester(fieldFocus)
+                .onKeyEvent { event ->
+                    if (event.type == KeyEventType.KeyDown &&
+                        (event.key == Key.DirectionCenter || event.key == Key.Enter)) {
+                        keyboard?.show()
+                        true
+                    } else false
+                }
+        )
+    }
+}
+
+// Action menu for one favorite or plugin item: play now / next / add to the end, heart, rename (favorites).
+@Composable
+private fun FavoriteActions(favorite: BrowseItem, onDone: () -> Unit, plugin: String = "favorites", onOpen: (() -> Unit)? = null) {
+    val firstFocus = remember { FocusRequester() }
+    LaunchedEffect(favorite) { firstFocus.requestFocus() }
+    val context = LocalContext.current.applicationContext
+    val scope = rememberCoroutineScope()
+    // Favorite id and current name while the rename field is open
+    var rename by remember(favorite) { mutableStateOf<Pair<String, String>?>(null) }
+
+    // Icons side by side; the last one (if any) looks at what is inside (the tracks of an album)
+    val actions = buildList<Triple<ImageVector, String, () -> Unit>> {
+        addAll(playActions(favorite.id, plugin, onDone, onSaved = { id, title -> rename = id to title }))
+        if (plugin == "favorites") {
+            add(Triple(Icons.Outlined.Edit, stringResource(R.string.action_rename), { rename = favorite.id to favorite.name }))
+            add(Triple(ActionDeleteIcon, stringResource(R.string.action_delete_favorite), {
+                scope.launch {
+                    val ok = withContext(Dispatchers.IO) { LMS.removeFavorite(favorite.id) }
+                    Toast.makeText(context, context.getString(if (ok) R.string.fav_removed else R.string.fav_remove_failed), Toast.LENGTH_SHORT).show()
+                    if (ok) onDone()
+                }
+            }))
+        }
         if (onOpen != null) add(Triple(ActionBrowseIcon, stringResource(R.string.action_browse), onOpen))
     }
-    IconActionRow(actions, firstFocus, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+    Column {
+        IconActionRow(actions, firstFocus, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+        rename?.let { (id, name) ->
+            RenameFavoriteField(id, name) { renamed ->
+                rename = null
+                if (renamed && plugin == "favorites") onDone()
+            }
+        }
+    }
 }
 
 // The saved playlists of the server.
@@ -2188,10 +2384,16 @@ internal fun ThumbRow(
     subtitle: String = "",
     // Streaming service of the item (lower case); shows its logo at the end of the row
     service: String = "",
+    // imageUrl is a one-colour svg that is shown in white; fallbackUrl is used when it cannot be loaded
+    tintWhite: Boolean = false,
+    fallbackUrl: String? = null,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val focused by interactionSource.collectIsFocusedAsState()
     val context = LocalContext.current
+    var svgFailed by remember(imageUrl) { mutableStateOf(false) }
+    var svgLoaded by remember(imageUrl) { mutableStateOf(false) }
+    val tinted = tintWhite && !svgFailed
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -2207,23 +2409,28 @@ internal fun ThumbRow(
             modifier = Modifier
                 .size(36.dp)
                 .clip(if (round) CircleShape else RoundedCornerShape(4.dp))
-                .background(Color.White.copy(alpha = 0.1f))
+                .background(if (tinted) Color.Transparent else Color.White.copy(alpha = 0.1f))
         ) {
             // Placeholder icon underneath; the picture covers it once loaded
-            Icon(
+            // A transparent svg would show the placeholder through it, so hide it once the svg is in
+            if (!(tinted && svgLoaded)) Icon(
                 imageVector = placeholder,
                 contentDescription = null,
                 tint = Color.White.copy(alpha = 0.5f),
                 modifier = Modifier.size(20.dp)
             )
-            if (imageUrl != null) {
+            val shownUrl = if (tintWhite && svgFailed) fallbackUrl else imageUrl
+            if (shownUrl != null) {
                 AsyncImage(
-                    model = ImageRequest.Builder(context).data(imageUrl).crossfade(true)
+                    model = ImageRequest.Builder(context).data(shownUrl).crossfade(true)
                         .build(),
                     imageLoader = imageLoader,
                     contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
+                    contentScale = if (tinted) ContentScale.Fit else ContentScale.Crop,
+                    colorFilter = if (tinted) androidx.compose.ui.graphics.ColorFilter.tint(Color.White) else null,
+                    onError = { if (tintWhite) svgFailed = true },
+                    onSuccess = { if (tintWhite) svgLoaded = true },
+                    modifier = if (tinted) Modifier.fillMaxSize().padding(4.dp) else Modifier.fillMaxSize()
                 )
             }
         }
@@ -2652,17 +2859,22 @@ private fun TrackList(albumId: String, listState: LazyListState, selectedTrackId
     }
 
     // The icons stay in place above the list while it scrolls
+    // Favorite id and name while the rename field (after saving the album) is shown
+    var rename by remember(albumId) { mutableStateOf<Pair<String, String>?>(null) }
+    val albumHeart = favoriteHeartAction(albumId, { LMS.albumFavTarget(albumId) }, onSaved = { id, title -> rename = id to title })
     Column {
         IconActionRow(
             listOf(
                 Triple(ActionPlayIcon, stringResource(R.string.action_play_now), { runAlbum("load", context.getString(R.string.folder_album_playing)) }),
                 Triple(ActionNextIcon, stringResource(R.string.action_play_next), { runAlbum("insert", context.getString(R.string.folder_album_next)) }),
                 Triple(ActionAddIcon, stringResource(R.string.action_add_end), { runAlbum("add", context.getString(R.string.folder_album_added)) }),
+                albumHeart,
             ),
             firstFocus,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
             wrapLeft = false,
         )
+        rename?.let { (id, name) -> RenameFavoriteField(id, name) { rename = null } }
         HintLazyColumn(state = listState) {
             items(list.size) { index ->
                 val track = list[index]
@@ -2716,15 +2928,20 @@ private fun TrackActions(track: BrowseTrack, onDone: () -> Unit) {
             if (track.subtitle.isNotBlank()) {
                 Text(track.subtitle, color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
+            // Favorite id and name while the rename field (after saving the track) is shown
+            var rename by remember(track.id) { mutableStateOf<Pair<String, String>?>(null) }
+            val trackHeart = favoriteHeartAction(track.id, { LMS.trackFavTarget(track.id) }, onSaved = { id, title -> rename = id to title })
             IconActionRow(
                 listOf(
                     Triple(ActionPlayIcon, stringResource(R.string.action_play_now), { run("load", context.getString(R.string.track_playing)) }),
                     Triple(ActionNextIcon, stringResource(R.string.action_play_next), { run("insert", context.getString(R.string.track_next)) }),
                     Triple(ActionAddIcon, stringResource(R.string.action_add_end), { run("add", context.getString(R.string.track_added)) }),
+                    trackHeart,
                 ),
                 firstFocus,
                 modifier = Modifier.padding(top = 4.dp),
             )
+            rename?.let { (id, name) -> RenameFavoriteField(id, name) { rename = null } }
         }
     }
 }

@@ -20,6 +20,8 @@ data class QueueTrack(
     val title: String,
     val artist: String,
     val coverId: String,
+    // Cover address of streaming tracks (they have no local cover id)
+    val artworkUrl: String = "",
 )
 
 // The whole play queue and the position of the current track in it.
@@ -96,6 +98,8 @@ data class FavoriteEntry(
     val isSearch: Boolean = false,
     // Plays by itself (a track, an album); may still have items below it
     val isAudio: Boolean = false,
+    // Address of a favorite (empty for other entries)
+    val url: String = "",
 )
 
 // An entry of Lyrion's Radio menu: the plugin's command and its display name.
@@ -537,6 +541,8 @@ object LMS{
             "ytm", "ytmplaylist" -> "YouTube Music"
             "youtube" -> "YouTube"
             "soundcloud" -> "SoundCloud"
+            // The Pyrrha plugin plays Pandora under its own scheme
+            "pyrrha", "pandora" -> "Pandora"
             // Internal schemes of other plugins, and local/plain-web sources: no badge
             "randomflow", "", "file", "http", "https", "ftp", "mms", "rtmp", "rtsp" -> ""
             else -> if (scheme.length >= 2 && scheme.all { it.isLetterOrDigit() }) scheme.replaceFirstChar { it.uppercase() } else ""
@@ -1448,7 +1454,7 @@ object LMS{
         val mac = playerMac
         if (mac == "00:00:00:00:00:00") return QueueList()
         return safeCall("getQueue", QueueList()) {
-            val status = rpcPlayer(mac, listOf("status", 0, count, "tags:ac"))
+            val status = rpcPlayer(mac, listOf("status", 0, count, "tags:acK"))
             val loop = status.optJSONArray("playlist_loop") ?: JSONArray()
             val tracks = (0 until loop.length()).map {
                 val o = loop.getJSONObject(it)
@@ -1457,6 +1463,7 @@ object LMS{
                     title = o.optString("title", ""),
                     artist = o.optString("artist", ""),
                     coverId = o.optString("coverid", ""),
+                    artworkUrl = o.optString("artwork_url", ""),
                 )
             }
             QueueList(tracks, status.optInt("playlist_cur_index", 0))
@@ -1637,8 +1644,28 @@ object LMS{
                 val name = o.optString("name")
                 val icon = o.optString("image").ifBlank { o.optString("icon") }
                 if (id.isBlank() || name.isBlank()) null
-                else FavoriteEntry(id, name, o.optInt("hasitems", 0) > 0, icon)
+                else FavoriteEntry(id, name, o.optInt("hasitems", 0) > 0, icon, false, o.optInt("isaudio", 0) > 0 || o.optString("url").isNotBlank(), o.optString("url"))
             }
+        }
+    }
+
+    // A favorite album of the library is only an address ("db:album.title=…&contributor.name=…") that Lyrion
+    // cannot list itself. This looks the album up in the library and returns its id, or null.
+    suspend fun albumIdFromFavoriteUrl(url: String): String? {
+        if (!url.startsWith("db:album.title=")) return null
+        return safeCall<String?>("albumIdFromFavoriteUrl", null) {
+            val params = url.removePrefix("db:").split('&').mapNotNull {
+                val i = it.indexOf('=')
+                if (i < 0) null else it.substring(0, i) to java.net.URLDecoder.decode(it.substring(i + 1), "UTF-8")
+            }.toMap()
+            // An album of a classical work is a subset of an album: not handled here
+            if (params.containsKey("work.title")) return@safeCall null
+            val title = params["album.title"].orEmpty()
+            val artist = params["contributor.name"]
+            if (title.isBlank()) return@safeCall null
+            val loop = rpcLoop(listOf("albums", 0, 200, "search:$title", "tags:la"), "albums_loop")
+            val matches = (0 until loop.length()).map { loop.getJSONObject(it) }.filter { it.optString("album") == title }
+            (matches.firstOrNull { artist == null || it.optString("artist") == artist } ?: matches.firstOrNull())?.optString("id")
         }
     }
 
@@ -1656,8 +1683,94 @@ object LMS{
         }
     }
 
-    // The Radio menu of the server. Radio Now Playing goes first, and is added
-    // when the plugin exists but is not listed there (menu location "My Apps").
+    // Gives a favorite (by its position id in the favorites) a new name; the original item is not touched.
+    suspend fun renameFavorite(itemId: String, title: String): Boolean =
+        safeCall("renameFavorite", false) {
+            rpcPlayer("", listOf("favorites", "rename", "item_id:$itemId", "title:$title"))
+            true
+        }
+
+    // What it takes to save something as a favorite: its address, its name and (optional) a picture.
+    class FavTarget(val url: String, val title: String, val icon: String = "")
+
+    // A plugin item (radio, app), from the plugin's menu answer (presetParams) of the level it sits in.
+    private suspend fun pluginFavoriteOf(cmd: String, itemId: String): FavTarget? {
+        val parentId = itemId.substringBeforeLast('.', "")
+        val command = mutableListOf<Any>(cmd, "items", 0, 1000)
+        if (parentId.isNotBlank()) command.add("item_id:$parentId")
+        command.add("menu:$cmd")
+        val loop = pluginMenu(command)?.optJSONArray("item_loop") ?: JSONArray()
+        for (i in 0 until loop.length()) {
+            val o = loop.getJSONObject(i)
+            if (o.optJSONObject("params")?.optString("item_id") != itemId) continue
+            val preset = o.optJSONObject("presetParams") ?: return null
+            val url = preset.optString("favorites_url")
+            val title = preset.optString("favorites_title").ifBlank { o.optString("text") }
+            return if (url.isBlank() || title.isBlank()) null else FavTarget(url, title, preset.optString("icon"))
+        }
+        return null
+    }
+
+    suspend fun pluginFavTarget(cmd: String, itemId: String): FavTarget? {
+        if (playerMac == "00:00:00:00:00:00") return null
+        return safeCall<FavTarget?>("pluginFavTarget", null) { pluginFavoriteOf(cmd, itemId) }
+    }
+
+    // An album of the library: Lyrion gives its favorites address and name with every album.
+    suspend fun albumFavTarget(albumId: String): FavTarget? = safeCall<FavTarget?>("albumFavTarget", null) {
+        val o = rpcLoop(listOf("albums", 0, 1, "album_id:$albumId", "tags:l"), "albums_loop").optJSONObject(0)
+        val url = o?.optString("favorites_url").orEmpty()
+        val title = o?.optString("favorites_title").orEmpty()
+        if (url.isBlank() || title.isBlank()) null else FavTarget(url, title)
+    }
+
+    // A track of the library: its own address and title.
+    suspend fun trackFavTarget(trackId: String): FavTarget? = safeCall<FavTarget?>("trackFavTarget", null) {
+        val o = rpcLoop(listOf("titles", 0, 1, "track_id:$trackId", "tags:tu"), "titles_loop").optJSONObject(0)
+        val url = o?.optString("url").orEmpty()
+        val title = o?.optString("title").orEmpty()
+        if (url.isBlank() || title.isBlank()) null else FavTarget(url, title)
+    }
+
+    // The id in the Lyrion favorites of the entry with this address (also inside folders), or null.
+    private suspend fun findFavoriteId(url: String, parent: String = "", depth: Int = 0): String? {
+        val cmd = mutableListOf<Any>("favorites", "items", 0, 1000, "want_url:1")
+        if (parent.isNotBlank()) cmd.add("item_id:$parent")
+        val loop = rpcLoop(cmd, "loop_loop")
+        for (i in 0 until loop.length()) {
+            val o = loop.getJSONObject(i)
+            if (o.optString("url") == url) return o.optString("id")
+        }
+        if (depth < 4) for (i in 0 until loop.length()) {
+            val o = loop.getJSONObject(i)
+            if (o.optInt("hasitems", 0) > 0) findFavoriteId(url, o.optString("id"), depth + 1)?.let { return it }
+        }
+        return null
+    }
+
+    // The favorites id of this target when it is a favorite already, otherwise null.
+    suspend fun favoriteIdOf(target: FavTarget): String? =
+        safeCall<String?>("favoriteIdOf", null) { findFavoriteId(target.url) }
+
+    // Saves the target as a Lyrion favorite.
+    suspend fun addFavorite(target: FavTarget): Boolean =
+        safeCall("addFavorite", false) {
+            val add = mutableListOf<Any>("favorites", "add", "url:${target.url}", "title:${target.title}")
+            if (target.icon.isNotBlank()) add.add("icon:${target.icon}")
+            rpcPlayer("", add)
+            true
+        }
+
+    // Removes a favorite (by its id in the favorites) from the Lyrion favorites.
+    suspend fun removeFavorite(favoriteId: String): Boolean =
+        safeCall("removeFavorite", false) {
+            rpcPlayer("", listOf("favorites", "delete", "item_id:$favoriteId"))
+            true
+        }
+
+    // The Radio menu of the server, like the Material skin: by the weight the server gives each entry
+    // (plugins first, then the TuneIn entries), alphabetical within the same weight. A plugin that its
+    // own setting puts under Apps (Radio Now Playing, Pyrrha...) is not listed here.
     suspend fun getRadios(): List<RadioEntry> {
         return safeCall("getRadios", emptyList()) {
             val res = pluginMenu(listOf("radios", 0, 200))
@@ -1671,11 +1784,10 @@ object LMS{
                 val o = loop.getJSONObject(it)
                 val cmd = o.optString("cmd")
                 val name = o.optString("name")
-                if (cmd.isBlank() || name.isBlank()) null else RadioEntry(cmd, name, o.optString("type") == "xmlbrowser_search")
+                if (cmd.isBlank() || name.isBlank()) null
+                else o.optInt("weight", 100) to RadioEntry(cmd, name, o.optString("type") == "xmlbrowser_search")
             }
-            val rnp = listed.firstOrNull { it.cmd == RNP_CMD }
-                ?: if (hasCommand(listOf(RNP_CMD, "items"))) RadioEntry(RNP_CMD, "Radio Now Playing") else null
-            if (rnp == null) listed else listOf(rnp) + listed.filter { it.cmd != RNP_CMD }
+            listed.sortedWith(compareBy({ it.first }, { it.second.name.lowercase() })).map { it.second }
         }
     }
 
