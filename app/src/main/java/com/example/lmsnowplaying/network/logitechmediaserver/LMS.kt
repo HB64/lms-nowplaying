@@ -656,9 +656,11 @@ object LMS{
 
     private suspend fun buildTechLine(mac: String, base: JSONObject, track: JSONObject, id: String): String {
         val transcoded = base.optString("is_transcoded", "").trim() == "1"
+        // A 0 means unknown (remote tracks report 0 for a bitrate they do not know), so it counts as empty
+        fun clean(v: String) = v.trim().let { if (it == "0") "" else it }
         fun field(key: String): String {
-            val b = base.optString(key, "").trim()
-            return if (transcoded || b.isNotEmpty()) b else track.optString(key, "").trim()
+            val b = clean(base.optString(key, ""))
+            return if (transcoded || b.isNotEmpty()) b else clean(track.optString(key, ""))
         }
         val type = field("type")
         var bitrate = field("bitrate")
@@ -673,8 +675,8 @@ object LMS{
         val stream = techJoin(bitrate, field("samplesize"), field("samplerate"), base.optString("replay_gain", ""), type)
         if (!transcoded) return stream
         val source = techJoin(
-            track.optString("bitrate", "").trim(), track.optString("samplesize", "").trim(),
-            track.optString("samplerate", "").trim(), "", track.optString("type", "").trim()
+            clean(track.optString("bitrate", "")), clean(track.optString("samplesize", "")),
+            clean(track.optString("samplerate", "")), "", track.optString("type", "").trim()
         )
         return if (source.isEmpty()) stream else "$source \u2192 $stream"
     }

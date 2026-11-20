@@ -139,6 +139,7 @@ fun SettingsScreen(
     var jellyfinPassword by remember { mutableStateOf(initial.jellyfinPassword) }
     var jellyfinApiKey by remember { mutableStateOf(initial.jellyfinApiKey) }
     var backgroundStyle by remember { mutableStateOf(initial.backgroundStyle) }
+    var backgroundMotion by remember { mutableStateOf(initial.backgroundMotion) }
     var standbyOnExit by remember { mutableStateOf(initial.standbyOnExit) }
     var volumeStep by remember { mutableStateOf(initial.volumeStep) }
     var seekStep by remember { mutableStateOf(initial.seekStep) }
@@ -164,7 +165,7 @@ fun SettingsScreen(
     var syncPrefs by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
     val syncListState = rememberLazyListState()
 
-    // "list", "lms" or "jellyfin"; popup is "", "bg", "vol" or "player".
+    // "list", "lms" or "jellyfin"; popup is "", "bg", "motion", "vol" or "player".
     var screen by remember { mutableStateOf("list") }
     var popup by remember { mutableStateOf("") }
     var highlighted by remember { mutableStateOf(0) }
@@ -176,13 +177,22 @@ fun SettingsScreen(
         SettingsRepository.BACKGROUND_STYLE_ARTIST,
         SettingsRepository.BACKGROUND_STYLE_ARTIST_GRAYSCALE,
         SettingsRepository.BACKGROUND_STYLE_ALBUM,
+        SettingsRepository.BACKGROUND_STYLE_ALBUM_DRIFT,
+        SettingsRepository.BACKGROUND_STYLE_ALBUM_LAVA,
         SettingsRepository.BACKGROUND_STYLE_STARFIELD,
     )
     val bgLabels = listOf(
         stringResource(R.string.settings_background_artist),
         stringResource(R.string.settings_background_artist_grayscale),
         stringResource(R.string.settings_background_album),
+        stringResource(R.string.settings_background_album_drift),
+        stringResource(R.string.settings_background_album_lava),
         stringResource(R.string.settings_background_starfield),
+    )
+    val motionLabels = listOf(
+        stringResource(R.string.settings_motion_calm),
+        stringResource(R.string.settings_motion_normal),
+        stringResource(R.string.settings_motion_strong),
     )
     val volValues = listOf(1, 2, 5, 10)
     val seekValues = listOf(1, 2, 5, 10, 30)
@@ -200,12 +210,13 @@ fun SettingsScreen(
     // Opened from the ⋮ menu: every change is saved at once, no Save row.
     // First start (no settings yet): "Save and start".
     val hasCancel = onCancel != null
-    val saveRow = 7
-    // Row 7: Default player (from the ⋮ menu) or Save and start (first start).
-    // Row 8 (only from the ⋮ menu): which items My Music shows.
-    // Row 9 (only from the ⋮ menu): the track info button on/off.
-    // Row 10 (only from the ⋮ menu): Synchronize… (couple players / sync settings of the selected player).
-    val rowCount = if (hasCancel) 11 else 8
+    val saveRow = 8
+    // Row 3: movement of the moving backgrounds.
+    // Row 8: Default player (from the ⋮ menu) or Save and start (first start).
+    // Row 9 (only from the ⋮ menu): which items My Music shows.
+    // Row 10 (only from the ⋮ menu): the track info button on/off.
+    // Row 11 (only from the ⋮ menu): Synchronize… (couple players / sync settings of the selected player).
+    val rowCount = if (hasCancel) 12 else 9
     val rp = if (hasCancel) 6.dp else 10.dp
     val playerOk: () -> Boolean = { LMS.playerMac.isNotBlank() && LMS.playerMac != "00:00:00:00:00:00" }
     val syncChange: (String, Int) -> Unit = { name, v ->
@@ -235,6 +246,7 @@ fun SettingsScreen(
             hiddenPlayers = hiddenPlayers,
             hiddenMyMusic = hiddenMyMusic,
             backgroundStyle = backgroundStyle,
+            backgroundMotion = backgroundMotion,
             standbyOnExit = standbyOnExit,
             volumeStep = volumeStep,
             seekStep = seekStep,
@@ -438,6 +450,7 @@ fun SettingsScreen(
                             if (popup.isNotEmpty()) {
                                 val count = when (popup) {
                                     "bg" -> bgValues.size
+                                    "motion" -> motionLabels.size
                                     "vol" -> volValues.size
                                     "seek" -> seekValues.size
                                     "defplayer" -> defPlayers.size + 2
@@ -480,6 +493,7 @@ fun SettingsScreen(
                                     event.key == Key.DirectionLeft && popup == "syncmenu" -> popup = ""
                                     isOk -> when (popup) {
                                         "bg" -> { backgroundStyle = bgValues[popupIndex]; popup = ""; persist() }
+                                        "motion" -> { backgroundMotion = popupIndex; popup = ""; persist() }
                                         "vol" -> { volumeStep = volValues[popupIndex]; popup = ""; persist() }
                                         "seek" -> { seekStep = seekValues[popupIndex]; popup = ""; persist() }
                                         "mymusic" -> {
@@ -551,25 +565,26 @@ fun SettingsScreen(
                                     0 -> screen = "lms"
                                     1 -> screen = "jellyfin"
                                     2 -> { popupIndex = bgValues.indexOf(backgroundStyle).coerceAtLeast(0); popup = "bg" }
-                                    3 -> { standbyOnExit = !standbyOnExit; persist() }
-                                    4 -> { popupIndex = volValues.indexOf(volumeStep).coerceAtLeast(0); popup = "vol" }
-                                    5 -> { popupIndex = seekValues.indexOf(seekStep).coerceAtLeast(0); popup = "seek" }
-                                    6 -> {
+                                    3 -> { popupIndex = backgroundMotion.coerceIn(0, 2); popup = "motion" }
+                                    4 -> { standbyOnExit = !standbyOnExit; persist() }
+                                    5 -> { popupIndex = volValues.indexOf(volumeStep).coerceAtLeast(0); popup = "vol" }
+                                    6 -> { popupIndex = seekValues.indexOf(seekStep).coerceAtLeast(0); popup = "seek" }
+                                    7 -> {
                                         popupIndex = playerApps.indexOf(localPlayerApp).coerceAtLeast(0)
                                         popup = "player"
                                     }
-                                    7 -> if (!hasCancel) doSave() else if (AppConfig.current.lmsUrl.isNotBlank()) {
+                                    8 -> if (!hasCancel) doSave() else if (AppConfig.current.lmsUrl.isNotBlank()) {
                                         defPlayers = LMS.players.toList()
                                         popupIndex = defPlayers.indexOfFirst { it.second == defaultPlayerMac } + 1
                                         defInfoShown = false
                                         popup = "defplayer"
                                     }
-                                    8 -> if (hasCancel) { popupIndex = 0; popup = "mymusic" }
-                                    9 -> if (hasCancel) {
+                                    9 -> if (hasCancel) { popupIndex = 0; popup = "mymusic" }
+                                    10 -> if (hasCancel) {
                                         showTrackInfoLine = !showTrackInfoLine
                                         persist()
                                     }
-                                    10 -> if (hasCancel && playerOk()) { popupIndex = 0; popup = "syncmenu" }
+                                    11 -> if (hasCancel && playerOk()) { popupIndex = 0; popup = "syncmenu" }
                                 }
                                 else -> return@onKeyEvent false
                             }
@@ -581,6 +596,12 @@ fun SettingsScreen(
                             SRow(stringResource(R.string.menu_background_prefix), BackgroundMenuIcon, false, bold = true)
                             bgLabels.forEachIndexed { i, l ->
                                 SRow((if (backgroundStyle == bgValues[i]) "●  " else "○  ") + l, null, popupIndex == i)
+                            }
+                        }
+                        "motion" -> {
+                            SRow(stringResource(R.string.menu_background_motion_prefix), BackgroundMenuIcon, false, bold = true)
+                            motionLabels.forEachIndexed { i, l ->
+                                SRow((if (backgroundMotion == i) "●  " else "○  ") + l, null, popupIndex == i)
                             }
                         }
                         "vol" -> {
@@ -776,19 +797,20 @@ fun SettingsScreen(
                             SRow("Lyrion: ${lmsUrl.ifBlank { notSet }}", ServerIcon, highlighted == 0, vPad = rp)
                             SRow("Jellyfin: ${jellyfinUrl.ifBlank { notSet }}", FilmstripIcon, highlighted == 1, vPad = rp)
                             SRow("${stringResource(R.string.menu_background_prefix)}: ${bgLabels[bgValues.indexOf(backgroundStyle).coerceAtLeast(0)]}", BackgroundMenuIcon, highlighted == 2, vPad = rp)
-                            SRow("${stringResource(R.string.menu_standby_prefix)}: ${if (standbyOnExit) onLabel else offLabel}", StandbyMenuIcon, highlighted == 3, vPad = rp)
-                            SRow("${stringResource(R.string.menu_volume_step_prefix)}: $volumeStep%", VolumeIcon, highlighted == 4, vPad = rp)
-                            SRow("${stringResource(R.string.menu_seek_step_prefix)}: $seekStep s", Icons.Filled.FastForward, highlighted == 5, vPad = rp)
+                            SRow("${stringResource(R.string.menu_background_motion_prefix)}: ${motionLabels[backgroundMotion.coerceIn(0, 2)]}", BackgroundMenuIcon, highlighted == 3, dim = backgroundStyle != SettingsRepository.BACKGROUND_STYLE_ALBUM_DRIFT && backgroundStyle != SettingsRepository.BACKGROUND_STYLE_ALBUM_LAVA, vPad = rp)
+                            SRow("${stringResource(R.string.menu_standby_prefix)}: ${if (standbyOnExit) onLabel else offLabel}", StandbyMenuIcon, highlighted == 4, vPad = rp)
+                            SRow("${stringResource(R.string.menu_volume_step_prefix)}: $volumeStep%", VolumeIcon, highlighted == 5, vPad = rp)
+                            SRow("${stringResource(R.string.menu_seek_step_prefix)}: $seekStep s", Icons.Filled.FastForward, highlighted == 6, vPad = rp)
                             SRow(
                                 "${stringResource(R.string.menu_local_player_prefix)}: ${playerLabels[playerApps.indexOf(localPlayerApp).coerceAtLeast(0)]}" +
                                     if (localPlayerAutoStart && localPlayerApp != SettingsRepository.LOCAL_PLAYER_NONE) " (${stringResource(R.string.menu_local_player_auto)})" else "",
-                                Icons.Filled.PlayArrow, highlighted == 6, vPad = rp
+                                Icons.Filled.PlayArrow, highlighted == 7, vPad = rp
                             )
                             if (hasCancel) {
-                                SRow("${stringResource(R.string.menu_default_player_prefix)}: ${defaultPlayerName.ifBlank { noneLabel }}", Icons.Filled.Check, highlighted == 7, vPad = rp)
-                                SRow(stringResource(R.string.settings_mymusic_items), null, highlighted == 8, vPad = rp)
-                                SRow("${stringResource(R.string.settings_track_info)}: ${if (showTrackInfoLine) onLabel else offLabel}", Icons.Outlined.Info, highlighted == 9, vPad = rp)
-                                SRow(stringResource(R.string.menu_sync), Icons.Outlined.Link, highlighted == 10, dim = !playerOk(), vPad = rp)
+                                SRow("${stringResource(R.string.menu_default_player_prefix)}: ${defaultPlayerName.ifBlank { noneLabel }}", Icons.Filled.Check, highlighted == 8, vPad = rp)
+                                SRow(stringResource(R.string.settings_mymusic_items), null, highlighted == 9, vPad = rp)
+                                SRow("${stringResource(R.string.settings_track_info)}: ${if (showTrackInfoLine) onLabel else offLabel}", Icons.Outlined.Info, highlighted == 10, vPad = rp)
+                                SRow(stringResource(R.string.menu_sync), Icons.Outlined.Link, highlighted == 11, dim = !playerOk(), vPad = rp)
                             } else {
                                 SRow(stringResource(R.string.settings_save_and_start), null, highlighted == saveRow, vPad = rp, bold = true)
                             }

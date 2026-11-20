@@ -6,6 +6,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.jellyfin.sdk.api.client.ApiClient
 import org.jellyfin.sdk.api.client.exception.ApiClientException
 import org.jellyfin.sdk.api.client.extensions.artistsApi
@@ -102,6 +103,24 @@ object JellyfinApi {
             return ""
         }
         return imageUrl
+    }
+
+    // Photo candidates of one artist for the info view: the portrait first, then the backdrop. Only an
+    // artist whose name matches exactly is used, so a similar name never shows someone else's photo.
+    suspend fun GetArtistImageUrls(artistName: String): List<String> {
+        if (!::ApiClient.isInitialized) return emptyList()
+        return try {
+            withContext(Dispatchers.IO) {
+                val items = ApiClient.artistsApi.getArtists(searchTerm = artistName, limit = 5).content.items.orEmpty()
+                val hit = items.firstOrNull { it.name.equals(artistName, ignoreCase = true) } ?: return@withContext emptyList()
+                listOf(ImageType.PRIMARY, ImageType.BACKDROP).map { ApiClient.imageApi.getItemImageUrl(itemId = hit.id, imageType = it) }
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            println("Jellyfin artist photo lookup failed: ${e.message}")
+            emptyList()
+        }
     }
 
 }

@@ -14,6 +14,8 @@
     <string name="settings_background_section">Now Playing background</string>
     <string name="settings_background_artist">Artist photo</string>
     <string name="settings_background_album">Album cover (blurred)</string>
+    <string name="settings_background_album_drift">Album cover (blurred, slowly moving)</string>
+    <string name="settings_background_album_lava">Album cover (blurred, lava lamp)</string>
     <string name="settings_background_starfield">Starfield</string>
     <string name="settings_background_artist_grayscale">Artist photo (grayscale)</string>
     <string name="settings_standby_on_exit_label">Put player in standby when the app closes</string>
@@ -22,6 +24,10 @@
     <string name="settings_cancel">Cancel</string>
     <string name="menu_settings">Settings</string>
     <string name="menu_background_prefix">Background</string>
+    <string name="menu_background_motion_prefix">Background movement</string>
+    <string name="settings_motion_calm">Calm</string>
+    <string name="settings_motion_normal">Normal</string>
+    <string name="settings_motion_strong">Strong</string>
     <string name="menu_players_header">Players</string>
     <string name="default_player_info">OK picks the default player. D-pad right shows or hides a player in the ⋮ menu (☑ = shown); hidden players stay active, they are just not listed. “Only control default” limits the app to the default player.</string>
     <string name="settings_track_info_button">Track info button</string>

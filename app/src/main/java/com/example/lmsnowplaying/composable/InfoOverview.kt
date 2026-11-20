@@ -43,6 +43,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -60,6 +61,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.lmsnowplaying.GetAlbumArt
 import com.example.lmsnowplaying.R
+import coil.ImageLoader
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import com.example.lmsnowplaying.network.jellyfin.JellyfinApi
 import com.example.lmsnowplaying.network.logitechmediaserver.BrowseItem
 import com.example.lmsnowplaying.network.logitechmediaserver.LMS
 import com.example.lmsnowplaying.settings.AppConfig
@@ -67,6 +72,7 @@ import com.example.lmsnowplaying.settings.NavState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
 
 // Info view like the Material skin's: artist, release and track of the playing track, one section at
 // a time behind tabs. Left/Right pick a tab, Up/Down scroll the section; Back (handled by the caller)
@@ -217,6 +223,9 @@ fun InfoOverview(artist: String, album: String, title: String, coverUrl: String,
                         GetAlbumArt("${AppConfig.current.lmsUrl}/contributor/${info.portraitId}/image")
                     }
                     Spacer(Modifier.height(12.dp))
+                } else if (info != null && hasArtist) {
+                    // Lyrion has no photo for this artist: use Jellyfin's, when it has one.
+                    JellyfinArtistPhoto(artist)
                 }
                 InfoText(info?.bio, loading, none)
                 val albumList = albums
@@ -294,6 +303,41 @@ private fun InfoTabs(labels: List<String>, active: Int) {
 
 // One section: a heading band, then the scrollable content in a column that is not wider than
 // comfortable to read.
+@Composable
+private fun ColumnScope.JellyfinArtistPhoto(artist: String) {
+    if (AppConfig.current.jellyfinUrl.isBlank() || JellyfinApi.APITOKEN.isNullOrEmpty()) return
+    var urls by remember(artist) { mutableStateOf<List<String>?>(null) }
+    var idx by remember(artist) { mutableStateOf(0) }
+    LaunchedEffect(artist) { urls = withContext(Dispatchers.IO) { JellyfinApi.GetArtistImageUrls(artist) } }
+    val list = urls ?: return
+    if (idx >= list.size) return
+    val context = LocalContext.current
+    val loader = remember {
+        ImageLoader.Builder(context)
+            .okHttpClient {
+                OkHttpClient.Builder()
+                    .addInterceptor { chain ->
+                        chain.proceed(chain.request().newBuilder()
+                            .header("Authorization", "MediaBrowser Client=\"LMS Jellyfin\", Device=\"my-script\", DeviceId=\"0.0.0\", Version=\"0.0.0\", Token=\"${JellyfinApi.APITOKEN}\"")
+                            .build())
+                    }
+                    .build()
+            }
+            .build()
+    }
+    Box(Modifier.size(220.dp).clip(RoundedCornerShape(8.dp)).align(Alignment.CenterHorizontally)) {
+        AsyncImage(
+            model = ImageRequest.Builder(context).data(list[idx]).crossfade(500).build(),
+            imageLoader = loader,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize(),
+            onError = { idx++ },
+        )
+    }
+    Spacer(Modifier.height(12.dp))
+}
+
 @Composable
 private fun InfoSection(
     heading: String,

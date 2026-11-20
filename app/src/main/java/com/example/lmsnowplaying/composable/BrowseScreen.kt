@@ -2958,9 +2958,10 @@ internal fun IconActionRow(
     wrapLeft: Boolean = true,
 ) {
     var focusedIndex by remember { mutableIntStateOf(0) }
-    // The name of the action fades out after a few seconds
+    // The name of the action fades out after a few seconds; it comes back each time the focus enters the row
     var captionShown by remember { mutableStateOf(true) }
-    LaunchedEffect(focusedIndex) {
+    var focusTick by remember { mutableIntStateOf(0) }
+    LaunchedEffect(focusedIndex, focusTick) {
         captionShown = true
         kotlinx.coroutines.delay(3000)
         captionShown = false
@@ -2972,7 +2973,7 @@ internal fun IconActionRow(
             actions.forEachIndexed { index, (icon, label, onClick) ->
                 val interactionSource = remember { MutableInteractionSource() }
                 val focused by interactionSource.collectIsFocusedAsState()
-                LaunchedEffect(focused) { if (focused) focusedIndex = index }
+                LaunchedEffect(focused) { if (focused) { focusedIndex = index; focusTick++ } }
                 Box(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier.focusRequester(target(index))

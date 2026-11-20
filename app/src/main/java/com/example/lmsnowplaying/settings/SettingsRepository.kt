@@ -30,6 +30,7 @@ object SettingsRepository {
     private val DEFAULT_PLAYER_NAME = stringPreferencesKey("default_player_name")
     private val DEFAULT_PLAYER_MAC = stringPreferencesKey("default_player_mac")
     private val BACKGROUND_STYLE = stringPreferencesKey("background_style")
+    private val BACKGROUND_MOTION = intPreferencesKey("background_motion")
     private val STANDBY_ON_EXIT = booleanPreferencesKey("standby_on_exit")
     private val SMART_REPLACE_PROVIDER = stringPreferencesKey("smart_replace_provider")
     private val VOLUME_STEP = intPreferencesKey("volume_step")
@@ -48,6 +49,8 @@ object SettingsRepository {
     // Valid values for Settings.backgroundStyle.
     const val BACKGROUND_STYLE_ARTIST = "artist"
     const val BACKGROUND_STYLE_ALBUM = "album"
+    const val BACKGROUND_STYLE_ALBUM_DRIFT = "album_drift"
+    const val BACKGROUND_STYLE_ALBUM_LAVA = "album_lava"
     const val BACKGROUND_STYLE_STARFIELD = "starfield"
     const val BACKGROUND_STYLE_ARTIST_GRAYSCALE = "artist_grayscale"
 
@@ -83,6 +86,8 @@ object SettingsRepository {
         // anyway (Lyrion/Jellyfin fall back to that when no real photo is
         // found), which can get repetitive.
         val backgroundStyle: String = BACKGROUND_STYLE_ARTIST,
+        // How far the moving background travels: 0 calm, 1 normal, 2 strong.
+        val backgroundMotion: Int = 0,
         // Whether the active player should be put into standby (paused +
         // powered off) when the app closes or is left. Defaults to on,
         // matching the app's original behavior.
@@ -131,6 +136,7 @@ object SettingsRepository {
                 defaultPlayerName = prefs[DEFAULT_PLAYER_NAME] ?: "",
                 defaultPlayerMac = prefs[DEFAULT_PLAYER_MAC] ?: "",
                 backgroundStyle = prefs[BACKGROUND_STYLE] ?: BACKGROUND_STYLE_ARTIST,
+                backgroundMotion = prefs[BACKGROUND_MOTION] ?: 0,
                 standbyOnExit = prefs[STANDBY_ON_EXIT] ?: true,
                 smartReplaceProvider = prefs[SMART_REPLACE_PROVIDER] ?: SMART_REPLACE_NONE,
                 volumeStep = prefs[VOLUME_STEP] ?: 5,
@@ -162,6 +168,7 @@ object SettingsRepository {
             prefs[DEFAULT_PLAYER_NAME] = settings.defaultPlayerName
             prefs[DEFAULT_PLAYER_MAC] = settings.defaultPlayerMac
             prefs[BACKGROUND_STYLE] = settings.backgroundStyle
+            prefs[BACKGROUND_MOTION] = settings.backgroundMotion
             prefs[STANDBY_ON_EXIT] = settings.standbyOnExit
             prefs[SMART_REPLACE_PROVIDER] = settings.smartReplaceProvider
             prefs[VOLUME_STEP] = settings.volumeStep

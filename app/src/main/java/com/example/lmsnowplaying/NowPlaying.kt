@@ -81,6 +81,18 @@ import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
 import coil.util.DebugLogger
 import com.commit451.coiltransformations.BlurTransformation
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.isSpecified
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.painter.Painter
 import com.example.lmsnowplaying.composable.BrowseScreen
 import com.example.lmsnowplaying.composable.PlayPauseButton
 import com.example.lmsnowplaying.composable.PlayerSelector
@@ -396,6 +408,11 @@ fun PlayerScreen(){
                         nextCoverUrl = ""
                     }
                 }
+            } else {
+                // No player: nothing plays, so the clock and the progress bar stand still
+                playing = false
+                elapsedTime = 0.0
+                trackDuration = 0.0
             }
             delay(2000)
         }
@@ -1035,6 +1052,8 @@ fun PlayerScreen(){
 private fun skipArtistBackdrop(artistName: String): Boolean {
     val style = AppConfig.current.backgroundStyle
     if (style == SettingsRepository.BACKGROUND_STYLE_ALBUM ||
+        style == SettingsRepository.BACKGROUND_STYLE_ALBUM_DRIFT ||
+        style == SettingsRepository.BACKGROUND_STYLE_ALBUM_LAVA ||
         style == SettingsRepository.BACKGROUND_STYLE_STARFIELD) {
         return true
     }
@@ -1307,12 +1326,30 @@ fun GetArtistArt(
         }
     } else ContentScale.Crop
 
+    // Slow drift: the blurred cover zooms and pans a little in a loop. Only the drawing moves (the phase is
+    // read while drawing), so the rest of the screen is not recomposed.
+    val motion = AppConfig.current.backgroundMotion.coerceIn(0, 2)
+    val lava = useBlur && AppConfig.current.backgroundStyle == SettingsRepository.BACKGROUND_STYLE_ALBUM_LAVA
+    val drift = lava || (useBlur && AppConfig.current.backgroundStyle == SettingsRepository.BACKGROUND_STYLE_ALBUM_DRIFT)
+    val driftPhase = if (drift) {
+        rememberInfiniteTransition(label = "bgDrift").animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(tween(DRIFT_PERIOD_MS[motion], easing = LinearEasing)),
+            label = "bgDriftPhase"
+        )
+    } else null
+    val backdropFilter = ColorFilter.colorMatrix(ColorMatrix(colorMatrix))
+
     Column(modifier = Modifier
         .clipToBounds()
-        .paint(
-            painter,
-            contentScale = backgroundScale,
-            colorFilter = ColorFilter.colorMatrix(ColorMatrix(colorMatrix))
+        .then(
+            if (driftPhase != null) Modifier.drawBehind {
+                drawDriftingCover(painter, backdropFilter, driftPhase.value, motion)
+                // Lava lamp: a second, half transparent copy turned upside down drifts the opposite way.
+                if (lava) rotate(180f) { drawDriftingCover(painter, backdropFilter, driftPhase.value, motion, -1f, 0.5f, 1.5f) }
+            }
+            else Modifier.paint(painter, contentScale = backgroundScale, colorFilter = backdropFilter)
         ),horizontalAlignment = Alignment.CenterHorizontally){
 
         PlayerSelector(_pn)
@@ -1324,4 +1361,31 @@ fun GetArtistArt(
         content()
     }
 
+}
+
+// Loop length, horizontal pan, vertical pan and zoom swing for the movement levels calm / normal / strong.
+// The pan stays below the overhang the 1.6x zoom leaves around the cover, so no edges show.
+private val DRIFT_PERIOD_MS = intArrayOf(90_000, 60_000, 45_000)
+private val DRIFT_PAN_X = floatArrayOf(0.05f, 0.10f, 0.20f)
+private val DRIFT_PAN_Y = floatArrayOf(0.04f, 0.08f, 0.16f)
+private val DRIFT_ZOOM = floatArrayOf(0.06f, 0.08f, 0.10f)
+
+// The blurred cover as the static blurred background draws it (cropped, 1.6x zoomed), but slowly zooming and
+// panning. phase 0..1 is one full loop, so the end joins the start without a jump.
+private fun DrawScope.drawDriftingCover(
+    painter: Painter, colorFilter: ColorFilter, phase: Float, motion: Int,
+    direction: Float = 1f, alpha: Float = 1f, offset: Float = 0f
+) {
+    val angle = direction * phase * 2f * Math.PI.toFloat() + offset
+    val intrinsic = painter.intrinsicSize
+    val src = if (intrinsic.isSpecified && intrinsic.width > 0f && intrinsic.height > 0f) intrinsic else size
+    val base = ContentScale.Crop.computeScaleFactor(src, size)
+    val zoom = 1.6f * (1.06f + DRIFT_ZOOM[motion] * kotlin.math.sin(angle))
+    val w = src.width * base.scaleX * zoom
+    val h = src.height * base.scaleY * zoom
+    val left = (size.width - w) / 2f + kotlin.math.sin(angle) * DRIFT_PAN_X[motion] * size.width
+    val top = (size.height - h) / 2f + kotlin.math.cos(angle) * DRIFT_PAN_Y[motion] * size.height
+    translate(left, top) {
+        with(painter) { draw(Size(w, h), alpha = alpha, colorFilter = colorFilter) }
+    }
 }

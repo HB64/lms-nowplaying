@@ -14,6 +14,8 @@
     <string name="settings_background_section">Achtergrond bij Now Playing</string>
     <string name="settings_background_artist">Artiestenfoto</string>
     <string name="settings_background_album">Albumhoes (geblurd)</string>
+    <string name="settings_background_album_drift">Albumhoes (geblurd, langzaam bewegend)</string>
+    <string name="settings_background_album_lava">Albumhoes (geblurd, lavalamp)</string>
     <string name="settings_background_starfield">Sterrenhemel</string>
     <string name="settings_background_artist_grayscale">Artiestenfoto (zwart-wit)</string>
     <string name="settings_standby_on_exit_label">Speler in stand-by zetten als de app afsluit</string>
@@ -22,6 +24,10 @@
     <string name="settings_cancel">Annuleren</string>
     <string name="menu_settings">Instellingen</string>
     <string name="menu_background_prefix">Achtergrond</string>
+    <string name="menu_background_motion_prefix">Beweging achtergrond</string>
+    <string name="settings_motion_calm">Rustig</string>
+    <string name="settings_motion_normal">Normaal</string>
+    <string name="settings_motion_strong">Sterk</string>
     <string name="menu_players_header">Spelers</string>
     <string name="default_player_info">OK kiest de standaardspeler. D-pad rechts toont of verbergt een speler in het ⋮-menu (☑ = zichtbaar); verborgen spelers blijven actief, ze staan alleen niet in de lijst. “Alleen standaardspeler bedienen” beperkt de app tot de standaardspeler.</string>
     <string name="settings_track_info_button">Trackinfo-knop</string>
