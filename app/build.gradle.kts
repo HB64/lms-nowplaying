@@ -25,8 +25,8 @@ android {
         applicationId = bundleID
         minSdk = 23
         targetSdk = 34
-        versionCode = 8
-        versionName = "1.0.7"
+        versionCode = 9
+        versionName = "1.0.8"
         manifestPlaceholders["redirectSchemeName"] =  bundleID
         manifestPlaceholders["redirectHostName"] =  "com.example.callback"
 
