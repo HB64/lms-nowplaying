@@ -589,7 +589,7 @@ fun PlayerScreen(){
                             buildAnnotatedString {
                                 withStyle(SpanStyle(color = mutedWhite)) { append("$fromLabel ") }
                                 withStyle(SpanStyle(color = Color.White)) {
-                                    append(if (albumYear.isNotBlank()) "$albumName ($albumYear)" else albumName)
+                                    append(if (albumYear.isNotBlank() && albumYear != "0") "$albumName ($albumYear)" else albumName)
                                 }
                             },
                             maxLines = 1,

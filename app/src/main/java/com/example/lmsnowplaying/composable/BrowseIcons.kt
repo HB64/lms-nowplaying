@@ -14,6 +14,8 @@ val ActionDeleteIcon: ImageVector by lazy { mdiIcon("Delete", "M19,4H15.5L14.5,3
 val ActionMoveIcon: ImageVector by lazy { mdiIcon("SwapHorizontal", "M21,9L17,5V8H10V10H17V13M7,11L3,15L7,19V16H14V14H7V11Z") }
 // Empty the queue (Material Design Icons: playlist-remove)
 val ActionClearQueueIcon: ImageVector by lazy { mdiIcon("PlaylistRemove", "M14,10H3V12H14V10M14,6H3V8H14V6M3,16H10V14H3V16M14.41,22L17,19.41L19.59,22L21,20.59L18.41,18L21,15.41L19.59,14L17,16.59L14.41,14L13,15.41L15.59,18L13,20.59L14.41,22Z") }
+// Save the queue (Material Design Icons: content-save)
+val ActionSaveQueueIcon: ImageVector by lazy { mdiIcon("ContentSave", "M15,9H5V5H15M12,19A3,3 0 0,1 9,16A3,3 0 0,1 12,13A3,3 0 0,1 15,16A3,3 0 0,1 12,19M17,3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V7L17,3Z") }
 // Remove repeated tracks: two notes, the second one struck through (drawn after the Material skin's icon)
 val ActionDuplicateIcon: ImageVector by lazy { mdiIcon("RemoveDuplicates", "M6,2H9.5V5H8V10A2.5,2.5 0 1,1 6,8ZM16.00,15.74L14.00,13.29L14.00,17.00L13.71,16.96L13.38,16.96L13.05,17.01L12.74,17.09L12.44,17.22L12.15,17.38L11.89,17.58L11.66,17.81L11.46,18.07L11.30,18.35L11.17,18.65L11.09,18.97L11.05,19.29L11.05,19.62L11.09,19.95L11.17,20.26L11.30,20.56L11.46,20.85L11.66,21.11L11.89,21.34L12.15,21.54L12.44,21.70L12.74,21.83L13.05,21.91L13.38,21.95L13.71,21.95L14.03,21.91L14.35,21.83L14.65,21.70L14.93,21.54L15.19,21.34L15.42,21.11L15.62,20.85L15.78,20.56L15.91,20.26L15.99,19.95L16.04,19.62L16.04,19.29L16.00,19.00ZM17.50,14.00L17.50,11.00L14.19,11.00L16.65,14.00ZM10.88,12.01L19.88,23.01L21.12,21.99L12.12,10.99Z") }
 // Heart with a plus (not a favorite yet) and with a minus (is a favorite): like the Material skin

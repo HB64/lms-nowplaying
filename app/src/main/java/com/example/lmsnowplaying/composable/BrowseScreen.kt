@@ -47,6 +47,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -782,24 +783,38 @@ private fun MyMusicList(
     onComposers: () -> Unit,
     onYears: () -> Unit,
 ) {
-    val firstFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { firstFocus.requestFocus() }
-
     // Items switched off in Settings (My Music items) are left out; Search always stays.
     val hidden = AppConfig.current.hiddenMyMusic
+    val all = mapOf(
+        "albumartists" to Triple(stringResource(R.string.browse_album_artists), onAlbumArtists, ArtistsIcon),
+        "artists" to Triple(stringResource(R.string.browse_artists), onArtists, ArtistsIcon),
+        "composers" to Triple(stringResource(R.string.browse_composers), onComposers, ArtistsIcon),
+        "genres" to Triple(stringResource(R.string.browse_genres), onGenres, GenresIcon),
+        "years" to Triple(stringResource(R.string.browse_years), onYears, Icons.Outlined.MusicNote),
+        "releases" to Triple(stringResource(R.string.browse_releases), onReleases, Icons.Outlined.MusicNote),
+        "newmusic" to Triple(stringResource(R.string.browse_new_music), onNewMusic, Icons.Outlined.MusicNote),
+        "folders" to Triple(stringResource(R.string.browse_music_folder), onFolders, MusicFolderIcon),
+        "favorites" to Triple(stringResource(R.string.browse_favorites), onFavorites, FavoritesIcon),
+        "playlists" to Triple(stringResource(R.string.browse_playlists), onPlaylists, PlaylistsIcon),
+    )
+    // Chosen order (items missing from it follow in the standard order); Search always stays on top
+    val order = AppConfig.current.myMusicOrder
+    val rows = listOf(Triple(stringResource(R.string.browse_search), onSearch, SearchIcon)) +
+        (order.filter { it in all } + all.keys.filter { it !in order }).distinct()
+            .filter { it !in hidden }.mapNotNull { all[it] }
+    // Back from a level lands on the row it was opened from
+    val startIndex = remember { (NavState.listFocus["MY_MUSIC"] ?: 0).coerceIn(0, rows.size - 1) }
+    val startFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { startFocus.requestFocus() }
+
     // Scrolls (with the fade + arrow hint) when more rows are on than fit.
-    HintLazyColumn {
-        item { BrowseRow(stringResource(R.string.browse_search), onClick = onSearch, modifier = Modifier.focusRequester(firstFocus), icon = SearchIcon) }
-        if ("albumartists" !in hidden) item { BrowseRow(stringResource(R.string.browse_album_artists), onClick = onAlbumArtists, icon = ArtistsIcon) }
-        if ("artists" !in hidden) item { BrowseRow(stringResource(R.string.browse_artists), onClick = onArtists, icon = ArtistsIcon) }
-        if ("composers" !in hidden) item { BrowseRow(stringResource(R.string.browse_composers), onClick = onComposers, icon = ArtistsIcon) }
-        if ("genres" !in hidden) item { BrowseRow(stringResource(R.string.browse_genres), onClick = onGenres, icon = GenresIcon) }
-        if ("years" !in hidden) item { BrowseRow(stringResource(R.string.browse_years), onClick = onYears, icon = Icons.Outlined.MusicNote) }
-        if ("releases" !in hidden) item { BrowseRow(stringResource(R.string.browse_releases), onClick = onReleases, icon = Icons.Outlined.MusicNote) }
-        if ("newmusic" !in hidden) item { BrowseRow(stringResource(R.string.browse_new_music), onClick = onNewMusic, icon = Icons.Outlined.MusicNote) }
-        if ("folders" !in hidden) item { BrowseRow(stringResource(R.string.browse_music_folder), onClick = onFolders, icon = MusicFolderIcon) }
-        if ("favorites" !in hidden) item { BrowseRow(stringResource(R.string.browse_favorites), onClick = onFavorites, icon = FavoritesIcon) }
-        if ("playlists" !in hidden) item { BrowseRow(stringResource(R.string.browse_playlists), onClick = onPlaylists, icon = PlaylistsIcon) }
+    HintLazyColumn(state = rememberLazyListState(initialFirstVisibleItemIndex = startIndex)) {
+        itemsIndexed(rows) { i, (label, onClick, icon) ->
+            BrowseRow(
+                label, onClick = onClick, icon = icon,
+                modifier = Modifier.trackFocus("MY_MUSIC", i).then(if (i == startIndex) Modifier.focusRequester(startFocus) else Modifier),
+            )
+        }
     }
 }
 
@@ -895,7 +910,7 @@ private fun RadioList(
                     val svgPath = when {
                         radio.icon.endsWith("_svg.png") -> radio.icon.removeSuffix("_svg.png") + ".svg"
                         radio.name.equals("Radio Paradise", ignoreCase = true) -> "material/svg/radioparadise"
-                        else -> null
+                        else -> materialAppSvg[radio.cmd]
                     }
                     ThumbRow(
                         text = radio.name,
@@ -1711,7 +1726,8 @@ private fun TrackDetailList(
                     modifier = Modifier.size(40.dp).clip(RoundedCornerShape(4.dp)).background(Color.White.copy(alpha = 0.1f))
                 ) {
                     Icon(Icons.Outlined.MusicNote, contentDescription = null, tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(20.dp))
-                    val url = coverUrl(track.coverId)
+                    // A full address (stream cover) is used as it is, a library cover id gets the server address
+                    val url = if (track.coverId.startsWith("http")) track.coverId else coverUrl(track.coverId)
                     if (url != null) {
                         AsyncImage(
                             model = ImageRequest.Builder(context).data(url).crossfade(true).build(),
@@ -2009,6 +2025,9 @@ private fun MixPanel(onMusicIp: () -> Unit) {
                 }
             )
         }
+        if (musicIpAvailable) {
+            item { BrowseRow(stringResource(R.string.browse_musicip), onClick = onMusicIp, icon = MusicIpIcon) }
+        }
         if (MixPlugin.DSTM in current.available) {
             item {
                 ChoiceRow(dstm, icon = DstmIcon) { next ->
@@ -2017,9 +2036,6 @@ private fun MixPanel(onMusicIp: () -> Unit) {
                     scope.launch(Dispatchers.IO) { LMS.runPluginCommand(cmd) }
                 }
             }
-        }
-        if (musicIpAvailable) {
-            item { BrowseRow(stringResource(R.string.browse_musicip), onClick = onMusicIp, icon = MusicIpIcon) }
         }
         if (active != null) {
             if (settings.isNotEmpty()) {
@@ -2357,6 +2373,16 @@ internal fun rememberLmsImageLoader(): ImageLoader {
     }
 }
 
+// Apps whose plugin icon is a coloured tile: Material has its own one-colour svg for them (address per app command).
+private val materialAppSvg = mapOf(
+    "deezer" to "material/html/images/deezer.svg",
+    "qobuz" to "material/html/images/qobuz.svg",
+    "spoton" to "material/svg/spoton",
+    "spotty" to "material/html/images/spotify.svg",
+    "tidal" to "material/html/images/tidal.svg",
+    "squeezecloud" to "material/html/images/soundcloud.svg",
+)
+
 // Address of a picture the server gives for a radio item (relative to the server, or already absolute).
 private fun radioImageUrl(path: String): String? = when {
     path.isBlank() -> null
@@ -2433,10 +2459,20 @@ internal fun ThumbRow(
                     modifier = if (tinted) Modifier.fillMaxSize().padding(4.dp) else Modifier.fillMaxSize()
                 )
             }
+            // Streaming service logo in the corner of the cover
+            if (service.isNotEmpty()) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .size(16.dp)
+                        .background(Color.Black.copy(alpha = 0.6f), CircleShape)
+                ) { ServiceBadge(service, imageLoader, size = 11.dp) }
+            }
         }
         Spacer(modifier = Modifier.width(10.dp))
         // Long lines scroll by themselves while the row has focus
-        Column(modifier = if (service.isNotEmpty()) Modifier.weight(1f) else Modifier) {
+        Column(modifier = Modifier) {
             Text(
                 text = text, color = Color.White, fontSize = 14.sp, maxLines = 1,
                 fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal,
@@ -2451,27 +2487,23 @@ internal fun ThumbRow(
                 )
             }
         }
-        if (service.isNotEmpty()) {
-            Spacer(modifier = Modifier.width(8.dp))
-            ServiceBadge(service, imageLoader)
-        }
     }
 }
 
-// The logo of a streaming service from the server's Material plugin; the name as text when it has none.
+// The logo of a streaming service from the server's Material plugin; nothing when it has none.
 @Composable
-private fun ServiceBadge(service: String, imageLoader: ImageLoader) {
+private fun ServiceBadge(service: String, imageLoader: ImageLoader, size: androidx.compose.ui.unit.Dp = 22.dp) {
     var logo by remember(service) { mutableIntStateOf(0) } // 0 loading, 1 shown, 2 none
-    Box(contentAlignment = Alignment.Center, modifier = Modifier.height(22.dp)) {
+    Box(contentAlignment = Alignment.Center, modifier = Modifier.height(size)) {
         AsyncImage(
             model = "${com.example.lmsnowplaying.settings.AppConfig.current.lmsUrl}/material/svg/$service?c=fff",
             imageLoader = imageLoader,
             contentDescription = service,
             onSuccess = { logo = 1 },
             onError = { logo = 2 },
-            modifier = Modifier.size(22.dp)
+            modifier = Modifier.size(size)
         )
-        if (logo == 2) {
+        if (logo == 2 && size >= 22.dp) {
             Text(
                 text = service.replaceFirstChar { it.uppercase() },
                 color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp, maxLines = 1,

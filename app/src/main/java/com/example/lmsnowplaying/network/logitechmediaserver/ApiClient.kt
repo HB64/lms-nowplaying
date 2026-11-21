@@ -38,8 +38,17 @@ object RetrofitClient {
 }
 
 object ApiClient {
+    // Follows the current server address: a new service is made only when the Retrofit instance was rebuilt.
+    private var serviceFor: Retrofit? = null
+    private var service: ApiService? = null
+
     val apiService: ApiService
-        get() = RetrofitClient.retrofit.create(ApiService::class.java)
+        @Synchronized get() {
+            val r = RetrofitClient.retrofit
+            val existing = service
+            if (existing != null && serviceFor === r) return existing
+            return r.create(ApiService::class.java).also { service = it; serviceFor = r }
+        }
 }
 
 

@@ -164,7 +164,8 @@ data class PluginSetting(
 
 object LMS{
 
-    private val lmsApi = ApiClient.apiService
+    // A getter, so a changed server address in Settings is used at once
+    private val lmsApi get() = ApiClient.apiService
 
     var isPlaying: Boolean = false
     @Volatile var volume: Int = 0
@@ -560,7 +561,7 @@ object LMS{
             // remote sources - internet radio, Spotify/Tidal-style plugins -
             // carry their own cover art; those tracks have no local coverid
             // and no real library track_id to look up via songinfo at all.
-            val reqString = "{\"method\": \"slim.request\", \"params\": [\"$playerMAC\", [\"status\", \"-\",1,\"tags:acly4KuorIT\"]]}"
+            val reqString = "{\"method\": \"slim.request\", \"params\": [\"$playerMAC\", [\"status\", \"-\",1,\"tags:bacly4KuorIT\"]]}"
             val requestBody = reqString.toRequestBody("application/json".toMediaTypeOrNull())
             val res = lmsApi.getCurrentSong(requestBody)
             val jsonData: String? = res.body()?.string()
@@ -634,8 +635,8 @@ object LMS{
     // Tech info line, in Material's order. The base of the status response describes the stream the player
     // gets (after any transcoding), playlist_loop describes the source file. When transcoding, the line shows
     // source -> stream, and the stream part only uses base values, so source values (bit depth, bitrate)
-    // never show up for the transcoded stream. Lyrion gives no bitrate for it; for mp3 the player's
-    // maxBitrate setting is what the transcoder uses.
+    // never show up for the transcoded stream. The b tag makes Lyrion 9.2+ add the stream bitrate to the base;
+    // without it (older Lyrion) the player's maxBitrate setting is used for mp3.
     // "981kb/s, 16bit, 44.1kHz, -6.88dB, flc": the technical line in Material's order.
     private fun techJoin(bitrate: String, size: String, rate: String, gain: String, type: String): String {
         val parts = mutableListOf<String>()
@@ -1533,10 +1534,12 @@ object LMS{
         val mac = playerMac
         if (mac == "00:00:00:00:00:00") return null
         return safeCall("getStreamMixPlugin", null) {
-            val status = rpcPlayer(mac, listOf("status", "-", 1, "tags:"))
+            val status = rpcPlayer(mac, listOf("status", "-", 1, "tags:u"))
             val item = status.optJSONArray("playlist_loop")?.optJSONObject(0)
-            // An empty queue needs a mix started by hand as well
-            val isStream = item != null && (item.optInt("remote", 0) == 1 || item.optLong("id", 0L) < 0L)
+            // An empty queue needs a mix started by hand as well. Tracks of a streaming service (Deezer, Qobuz, ...)
+            // count as a stream too, even when Lyrion has them in its library.
+            val isStream = item != null && (item.optInt("remote", 0) == 1 || item.optLong("id", 0L) < 0L ||
+                streamServiceName(item.optString("url", "")).isNotEmpty())
             if (item != null && !isStream) return@safeCall null
             getMixState().on.firstOrNull { it != MixPlugin.DSTM && it != MixPlugin.RANDOMPLAY }
         }
@@ -1956,6 +1959,18 @@ object LMS{
             if (cmd == "load") power(true)
             rpcPlayer(playerMac, listOf("playlistcontrol", "cmd:$cmd", "track_id:${ids.joinToString(",")}"))
             true
+        }
+    }
+
+    // Saves the player's current queue as a playlist on the server under the given name and checks that
+    // it exists afterwards (Lyrion silently refuses to save while it scans). Lyrion may change characters
+    // in the name (a colon becomes a space), so only letters and digits are compared.
+    suspend fun saveQueueAsPlaylist(name: String): Boolean {
+        if (playerMac == "00:00:00:00:00:00" || name.isBlank()) return false
+        return safeCall("saveQueueAsPlaylist", false) {
+            rpcPlayer(playerMac, listOf("playlist", "save", name))
+            val wanted = name.filter { it.isLetterOrDigit() }.lowercase()
+            getPlaylists().any { it.name.filter { c -> c.isLetterOrDigit() }.lowercase() == wanted }
         }
     }
 

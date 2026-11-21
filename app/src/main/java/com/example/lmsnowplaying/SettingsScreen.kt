@@ -157,6 +157,9 @@ fun SettingsScreen(
     var onlyControlDefault by remember { mutableStateOf(initial.onlyControlDefault) }
     var hiddenPlayers by remember { mutableStateOf(initial.hiddenPlayers) }
     var hiddenMyMusic by remember { mutableStateOf(initial.hiddenMyMusic) }
+    var myMusicOrder by remember { mutableStateOf(initial.myMusicOrder) }
+    // True while an item is picked up in the order popup
+    var orderGrab by remember { mutableStateOf(false) }
     // Connected players, captured when the Default player list is opened.
     var defPlayers by remember { mutableStateOf(listOf<Pair<String, String>>()) }
     // Sync (for the selected player): the other players, and its 7 sync settings.
@@ -165,7 +168,7 @@ fun SettingsScreen(
     var syncPrefs by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
     val syncListState = rememberLazyListState()
 
-    // "list", "lms" or "jellyfin"; popup is "", "bg", "motion", "vol" or "player".
+    // "list", "lms" or "jellyfin"; popup is "", "bg", "motion", "vol", "mymorder" or "player".
     var screen by remember { mutableStateOf("list") }
     var popup by remember { mutableStateOf("") }
     var highlighted by remember { mutableStateOf(0) }
@@ -214,9 +217,10 @@ fun SettingsScreen(
     // Row 3: movement of the moving backgrounds.
     // Row 8: Default player (from the ⋮ menu) or Save and start (first start).
     // Row 9 (only from the ⋮ menu): which items My Music shows.
-    // Row 10 (only from the ⋮ menu): the track info button on/off.
-    // Row 11 (only from the ⋮ menu): Synchronize… (couple players / sync settings of the selected player).
-    val rowCount = if (hasCancel) 12 else 9
+    // Row 10 (only from the ⋮ menu): the order of the My Music items.
+    // Row 11 (only from the ⋮ menu): the track info button on/off.
+    // Row 12 (only from the ⋮ menu): Synchronize… (couple players / sync settings of the selected player).
+    val rowCount = if (hasCancel) 13 else 9
     val rp = if (hasCancel) 6.dp else 10.dp
     val playerOk: () -> Boolean = { LMS.playerMac.isNotBlank() && LMS.playerMac != "00:00:00:00:00:00" }
     val syncChange: (String, Int) -> Unit = { name, v ->
@@ -230,6 +234,8 @@ fun SettingsScreen(
         stringResource(R.string.browse_years), stringResource(R.string.browse_releases), stringResource(R.string.browse_new_music), stringResource(R.string.browse_music_folder), stringResource(R.string.browse_favorites),
         stringResource(R.string.browse_playlists)
     )
+    // The items in their chosen order; items missing from the saved order (or new ones) follow at the end.
+    val orderedIds: () -> List<String> = { (myMusicOrder.filter { it in myMusicIds } + myMusicIds.filter { it !in myMusicOrder }).distinct() }
 
     val buildSettings: () -> SettingsRepository.Settings = {
         SettingsRepository.Settings(
@@ -245,6 +251,7 @@ fun SettingsScreen(
             onlyControlDefault = onlyControlDefault && defaultPlayerMac.isNotEmpty(),
             hiddenPlayers = hiddenPlayers,
             hiddenMyMusic = hiddenMyMusic,
+            myMusicOrder = myMusicOrder,
             backgroundStyle = backgroundStyle,
             backgroundMotion = backgroundMotion,
             standbyOnExit = standbyOnExit,
@@ -454,7 +461,7 @@ fun SettingsScreen(
                                     "vol" -> volValues.size
                                     "seek" -> seekValues.size
                                     "defplayer" -> defPlayers.size + 2
-                                    "mymusic" -> myMusicIds.size
+                                    "mymusic", "mymorder" -> myMusicIds.size
                                     "syncmenu" -> 2
                                     "syncpick" -> syncCands.size.coerceAtLeast(1)
                                     "syncset" -> LMS.syncPrefNames.size
@@ -466,6 +473,17 @@ fun SettingsScreen(
                                         popupIndex = if (popupIndex == -1) 0 else (popupIndex + 1) % count
                                     popup == "defplayer" && event.key == Key.DirectionUp ->
                                         popupIndex = if (popupIndex == 0) -1 else if (popupIndex == -1) count - 1 else popupIndex - 1
+                                    // Order popup with an item picked up: Up / Down move it
+                                    popup == "mymorder" && orderGrab && (event.key == Key.DirectionDown || event.key == Key.DirectionUp) -> {
+                                        val list = orderedIds().toMutableList()
+                                        val to = popupIndex + if (event.key == Key.DirectionDown) 1 else -1
+                                        if (to in list.indices) {
+                                            java.util.Collections.swap(list, popupIndex, to)
+                                            myMusicOrder = list
+                                            popupIndex = to
+                                            persist()
+                                        }
+                                    }
                                     event.key == Key.DirectionDown -> popupIndex = (popupIndex + 1) % count
                                     event.key == Key.DirectionUp -> popupIndex = (popupIndex - 1 + count) % count
                                     // Default-player list: D-pad right shows/hides that player in the ⋮ menu.
@@ -501,6 +519,7 @@ fun SettingsScreen(
                                             hiddenMyMusic = if (id in hiddenMyMusic) hiddenMyMusic - id else hiddenMyMusic + id
                                             persist()
                                         }
+                                        "mymorder" -> orderGrab = !orderGrab
                                         "defplayer" -> {
                                             if (popupIndex == -1) {
                                                 defInfoShown = !defInfoShown
@@ -580,11 +599,12 @@ fun SettingsScreen(
                                         popup = "defplayer"
                                     }
                                     9 -> if (hasCancel) { popupIndex = 0; popup = "mymusic" }
-                                    10 -> if (hasCancel) {
+                                    10 -> if (hasCancel) { orderGrab = false; popupIndex = 0; popup = "mymorder" }
+                                    11 -> if (hasCancel) {
                                         showTrackInfoLine = !showTrackInfoLine
                                         persist()
                                     }
-                                    11 -> if (hasCancel && playerOk()) { popupIndex = 0; popup = "syncmenu" }
+                                    12 -> if (hasCancel && playerOk()) { popupIndex = 0; popup = "syncmenu" }
                                 }
                                 else -> return@onKeyEvent false
                             }
@@ -620,6 +640,13 @@ fun SettingsScreen(
                             SRow(stringResource(R.string.settings_mymusic_items), null, false, bold = true)
                             myMusicIds.forEachIndexed { i, id ->
                                 SRow((if (id in hiddenMyMusic) "☐  " else "☑  ") + myMusicLabels[i], null, popupIndex == i)
+                            }
+                        }
+                        "mymorder" -> {
+                            SRow(stringResource(R.string.settings_mymusic_order), null, false, bold = true)
+                            SRow(stringResource(R.string.settings_mymusic_order_hint), null, false, dim = true)
+                            orderedIds().forEachIndexed { i, id ->
+                                SRow((if (orderGrab && popupIndex == i) "⇅  " else "") + myMusicLabels[myMusicIds.indexOf(id)], null, popupIndex == i)
                             }
                         }
                         "defplayer" -> {
@@ -809,8 +836,9 @@ fun SettingsScreen(
                             if (hasCancel) {
                                 SRow("${stringResource(R.string.menu_default_player_prefix)}: ${defaultPlayerName.ifBlank { noneLabel }}", Icons.Filled.Check, highlighted == 8, vPad = rp)
                                 SRow(stringResource(R.string.settings_mymusic_items), null, highlighted == 9, vPad = rp)
-                                SRow("${stringResource(R.string.settings_track_info)}: ${if (showTrackInfoLine) onLabel else offLabel}", Icons.Outlined.Info, highlighted == 10, vPad = rp)
-                                SRow(stringResource(R.string.menu_sync), Icons.Outlined.Link, highlighted == 11, dim = !playerOk(), vPad = rp)
+                                SRow(stringResource(R.string.settings_mymusic_order), null, highlighted == 10, vPad = rp)
+                                SRow("${stringResource(R.string.settings_track_info)}: ${if (showTrackInfoLine) onLabel else offLabel}", Icons.Outlined.Info, highlighted == 11, vPad = rp)
+                                SRow(stringResource(R.string.menu_sync), Icons.Outlined.Link, highlighted == 12, dim = !playerOk(), vPad = rp)
                             } else {
                                 SRow(stringResource(R.string.settings_save_and_start), null, highlighted == saveRow, vPad = rp, bold = true)
                             }

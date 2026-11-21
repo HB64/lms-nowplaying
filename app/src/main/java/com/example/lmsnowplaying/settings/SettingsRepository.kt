@@ -43,6 +43,7 @@ object SettingsRepository {
     private val ONLY_CONTROL_DEFAULT = booleanPreferencesKey("only_control_default")
     private val HIDDEN_PLAYERS = stringSetPreferencesKey("hidden_players")
     private val HIDDEN_MY_MUSIC = stringSetPreferencesKey("hidden_my_music")
+    private val MY_MUSIC_ORDER = stringPreferencesKey("my_music_order")
     private val LOCAL_PLAYER_DEVICE_VOLUME = booleanPreferencesKey("local_player_device_volume")
     private val LOCAL_PLAYER_FIXED_VOLUME = intPreferencesKey("local_player_fixed_volume")
 
@@ -117,6 +118,8 @@ object SettingsRepository {
         val hiddenPlayers: Set<String> = emptySet(),
         // Items of the Browse > My Music list that are switched off (artists, genres, folders, favorites, playlists).
         val hiddenMyMusic: Set<String> = DEFAULT_HIDDEN_MY_MUSIC,
+        // Order of the My Music items (ids); empty = the standard order. Search always stays on top.
+        val myMusicOrder: List<String> = emptyList(),
         // Slider and volume keys control this device's volume when the selected player is the local player.
         val localPlayerDeviceVolume: Boolean = false,
         // Squeezelite in Lyrion: 1 = fixed at 100%, 0 = variable (default). Sent whenever the player connects.
@@ -149,6 +152,7 @@ object SettingsRepository {
                 onlyControlDefault = prefs[ONLY_CONTROL_DEFAULT] ?: false,
                 hiddenPlayers = prefs[HIDDEN_PLAYERS] ?: emptySet(),
                 hiddenMyMusic = prefs[HIDDEN_MY_MUSIC] ?: DEFAULT_HIDDEN_MY_MUSIC,
+                myMusicOrder = prefs[MY_MUSIC_ORDER]?.split(",")?.filter { it.isNotBlank() } ?: emptyList(),
                 localPlayerDeviceVolume = prefs[LOCAL_PLAYER_DEVICE_VOLUME] ?: false,
                 localPlayerFixedVolume = prefs[LOCAL_PLAYER_FIXED_VOLUME] ?: 0,
             )
@@ -181,6 +185,7 @@ object SettingsRepository {
             prefs[ONLY_CONTROL_DEFAULT] = settings.onlyControlDefault
             prefs[HIDDEN_PLAYERS] = settings.hiddenPlayers
             prefs[HIDDEN_MY_MUSIC] = settings.hiddenMyMusic
+            prefs[MY_MUSIC_ORDER] = settings.myMusicOrder.joinToString(",")
             prefs[LOCAL_PLAYER_DEVICE_VOLUME] = settings.localPlayerDeviceVolume
             prefs[LOCAL_PLAYER_FIXED_VOLUME] = settings.localPlayerFixedVolume
         }

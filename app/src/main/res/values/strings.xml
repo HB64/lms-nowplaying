@@ -32,6 +32,8 @@
     <string name="default_player_info">OK picks the default player. D-pad right shows or hides a player in the ⋮ menu (☑ = shown); hidden players stay active, they are just not listed. “Only control default” limits the app to the default player.</string>
     <string name="settings_track_info_button">Track info button</string>
     <string name="settings_track_info">Track info</string>
+    <string name="settings_mymusic_order">My Music order</string>
+    <string name="settings_mymusic_order_hint">OK: pick up / put down  ·  Up / Down: move</string>
     <string name="settings_mymusic_items">My Music items</string>
     <string name="menu_standby_prefix">Standby on exit</string>
     <string name="menu_standby_on">On</string>
@@ -206,6 +208,12 @@
     <string name="queue_dedupe_done">%d duplicates removed</string>
     <string name="queue_dedupe_none">No duplicates found</string>
     <string name="queue_clear">Clear queue</string>
+    <string name="queue_save">Save queue</string>
+    <string name="queue_saved_name">Queue %1$s</string>
+    <string name="queue_saved">Saved \"%1$s\" (%2$d tracks) on this device</string>
+    <string name="queue_saved_server">Saved \"%1$s\" as a playlist on the server. Lyrion may start a scan now.</string>
+    <string name="queue_save_server_failed">Not saved: Lyrion is probably scanning. Try again later.</string>
+    <string name="queue_save_failed">Could not save the queue</string>
     <string name="queue_remove">Remove from queue</string>
     <string name="queue_empty">The queue is empty</string>
     <string name="replace_via">Next track replaced via %1$s</string>

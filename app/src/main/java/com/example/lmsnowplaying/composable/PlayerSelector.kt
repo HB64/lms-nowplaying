@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -28,6 +30,8 @@ import com.example.lmsnowplaying.settings.NavState
 fun PlayerSelector(pn: String){
 
     val _playerName by LMS.playerNameFlow.collectAsState()
+    // Re-read the sync groups whenever the player list refreshes
+    val _playersVersion by LMS.playersVersion.collectAsState()
 
     //println("LMS PLAYER NAME: " + LMS.playerName)
 
@@ -47,6 +51,16 @@ fun PlayerSelector(pn: String){
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(text = _playerName, color = Color.White.copy(alpha = 0.7f), fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                // The selected player is synchronized with another one
+                if (_playersVersion >= 0 && LMS.syncGroups.any { LMS.playerMac in it }) {
+                    Spacer(Modifier.width(6.dp))
+                    Icon(
+                        imageVector = Icons.Outlined.Link,
+                        contentDescription = "Synced",
+                        tint = Color.White.copy(alpha = 0.7f),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
         }
         // Info view (artist, album, lyrics), just left of the ⋮ menu

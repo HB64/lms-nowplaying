@@ -16,7 +16,7 @@ If you have a Jellyfin instance, you can provide the credentials to grab the bac
 - Library search shows artist and album with every result, plus the matching track under an album; long lines scroll by themselves.
 - Radio menu: browse and search your Lyrion radio plugins (TuneIn, RadioTunes, ...) and play stations. Radio Now Playing appears at the top when it is installed.
 - Icons throughout the menus, player list and settings, with a player-type icon (Squeezelite, Boom, Touch, ...) in the header, and a scroll indicator on long lists.
-- Queue panel: see what is queued, jump to a track or remove it.
+- Queue panel: see what is queued, jump to a track or remove it, or save the queue as a playlist on your Lyrion server (see Saving the queue as a playlist below).
 - Mix menu: switch the Auto Mix plugins SugarCube, MIPster, Random Flow and Lyrion's Random Mix on or off, and start a new mix or a batch. While a stream plays, a start-mix button on the Now Playing screen starts a mix right away.
 - Shows a preview of the next track under the currently playing one.
 - "Replace next track" button that picks a new upcoming track: uses the active mix plugin's own replace action (SugarCube, MIPster or Random Flow), otherwise a legitimate Don't Stop The Music trigger, and falls back to a random track from the same genre/artist if none of those is available. Hidden while a stream or batch plays.
@@ -81,6 +81,17 @@ Both work with LMSNP. I prefer Squeezelite: it is free, finds your server by its
 **Player list.** Offline players are not shown. The list refreshes every 10 seconds, and every 2 seconds after starting a local player. If the player you control goes offline, LMSNP shows "No Player" until it is back.
 
 **Default player.** Settings → Default player opens a list of the connected players; "None" clears it. LMSNP selects the default player when it is connected. A default player that is offline is not selected: it is picked as soon as it connects. The switch "Only control default" in the same list (it needs a default player) hides the player list in the ⋮ menu: LMSNP then always controls the default player, and shows "No Player" while it is offline. Other players in Lyrion are not affected.
+
+## Saving the queue as a playlist
+
+The save icon in the queue panel asks for a name and saves the queue of the selected player as a playlist on your Lyrion server, using Lyrion's own `playlist save` command. LMSNP writes no file itself: Lyrion writes the `.m3u` file in its playlist folder. Saving does not start playback and does not change the queue.
+
+Two things to know before you use it:
+
+- **Keep Lyrion's playlist folder outside your music folder** (Lyrion: Settings → Basic Settings → Media Folders). If the playlist folder is inside the music folder, the AutoRescan plugin sees the new `.m3u` file as a change in the music folder and starts a scan after its "Rescan delay". While that scan runs, Lyrion blocks actions on playlist and folder level. If you move the playlist folder, also move your existing `.m3u` files to the new folder; otherwise they no longer show up in Lyrion.
+- **Lyrion does not save a playlist while it is scanning.** LMSNP checks afterwards that the playlist exists and shows "Not saved: Lyrion is probably scanning" if it does not. Try again when the scan is finished.
+
+Also good to know: Lyrion replaces characters that are not allowed in a file name (a colon in the time of the default name becomes a space). If a playlist with the same name already exists, Lyrion decides what happens, so use a new name.
 
 # Installing without building
 

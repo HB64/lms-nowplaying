@@ -32,6 +32,8 @@
     <string name="default_player_info">OK kiest de standaardspeler. D-pad rechts toont of verbergt een speler in het ⋮-menu (☑ = zichtbaar); verborgen spelers blijven actief, ze staan alleen niet in de lijst. “Alleen standaardspeler bedienen” beperkt de app tot de standaardspeler.</string>
     <string name="settings_track_info_button">Trackinfo-knop</string>
     <string name="settings_track_info">Trackinfo</string>
+    <string name="settings_mymusic_order">Mijn Muziek-volgorde</string>
+    <string name="settings_mymusic_order_hint">OK: oppakken / neerzetten  ·  Omhoog / Omlaag: verplaatsen</string>
     <string name="settings_mymusic_items">Mijn Muziek-items</string>
     <string name="menu_standby_prefix">Stand-by bij afsluiten</string>
     <string name="menu_standby_on">Aan</string>
@@ -206,6 +208,12 @@
     <string name="queue_dedupe_done">%d duplicaten verwijderd</string>
     <string name="queue_dedupe_none">Geen duplicaten gevonden</string>
     <string name="queue_clear">Wachtlijst leegmaken</string>
+    <string name="queue_save">Wachtlijst opslaan</string>
+    <string name="queue_saved_name">Wachtlijst %1$s</string>
+    <string name="queue_saved">\"%1$s\" opgeslagen (%2$d nummers) op dit apparaat</string>
+    <string name="queue_saved_server">\"%1$s\" opgeslagen als afspeellijst op de server. Lyrion kan nu een scan starten.</string>
+    <string name="queue_save_server_failed">Niet opgeslagen: Lyrion is waarschijnlijk aan het scannen. Probeer het later opnieuw.</string>
+    <string name="queue_save_failed">Wachtlijst opslaan is niet gelukt</string>
     <string name="queue_remove">Verwijderen uit wachtrij</string>
     <string name="queue_empty">De wachtrij is leeg</string>
     <string name="replace_via">Volgende vervangen via %1$s</string>

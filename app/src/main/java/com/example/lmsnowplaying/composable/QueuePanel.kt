@@ -58,6 +58,25 @@ import com.example.lmsnowplaying.settings.NavState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.ImeAction
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlinx.coroutines.withContext
 
 // The play queue as a panel on top of Now Playing: choose a track to play it
@@ -78,12 +97,15 @@ fun QueuePanel() {
     val emptyFocus = remember { FocusRequester() }
     // True while the list of players to move the queue to is shown
     var pickPlayer by remember { mutableStateOf(false) }
+    // True while the name for saving the queue is asked, and the name offered first
+    var naming by remember { mutableStateOf(false) }
+    var defaultName by remember { mutableStateOf("") }
     val context = LocalContext.current.applicationContext
 
     // Read the queue now and keep it fresh while no track is selected
     LaunchedEffect(Unit) {
         while (true) {
-            if (selected == null && !pickPlayer) queue = withContext(Dispatchers.IO) { LMS.getQueue() }
+            if (selected == null && !pickPlayer && !naming) queue = withContext(Dispatchers.IO) { LMS.getQueue() }
             delay(3000)
         }
     }
@@ -101,8 +123,10 @@ fun QueuePanel() {
     }
 
     // Back from the action menu to the list: focus the current track again
-    LaunchedEffect(selected, pickPlayer) {
-        if (selected == null && !pickPlayer) {
+    LaunchedEffect(selected, pickPlayer, naming) {
+        if (naming) {
+            // the name field takes the focus itself
+        } else if (selected == null && !pickPlayer) {
             delay(60)
             val q = queue
             val idx = q?.tracks?.indexOfFirst { it.absoluteIndex == (lastOpened ?: q.currentIndex) } ?: -1
@@ -120,7 +144,7 @@ fun QueuePanel() {
     }
 
     val goBack: () -> Unit = {
-        if (pickPlayer) pickPlayer = false else if (selected != null) selected = null else NavState.showQueue = false
+        if (naming) naming = false else if (pickPlayer) pickPlayer = false else if (selected != null) selected = null else NavState.showQueue = false
     }
     BackHandler(enabled = true) { goBack() }
 
@@ -151,18 +175,23 @@ fun QueuePanel() {
             val sel = selected
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = if (pickPlayer) stringResource(R.string.queue_move_title) else sel?.title ?: if (q == null) stringResource(R.string.queue_title) else stringResource(R.string.queue_title_count, q.tracks.size),
+                    text = if (naming) stringResource(R.string.queue_save) else if (pickPlayer) stringResource(R.string.queue_move_title) else sel?.title ?: if (q == null) stringResource(R.string.queue_title) else stringResource(R.string.queue_title_count, q.tracks.size),
                     color = Color.White,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     modifier = Modifier.padding(start = 12.dp, bottom = 8.dp).weight(1f)
                 )
-                if (!pickPlayer && sel == null && q != null && q.tracks.isNotEmpty()) {
+                if (!pickPlayer && !naming && sel == null && q != null && q.tracks.isNotEmpty()) {
                     // Icons for the whole queue; Left and Down go back to the list (Left would close the panel)
                     IconActionRow(
                         listOf(
                             Triple(ActionMoveIcon, stringResource(R.string.queue_move_short), { pickPlayer = true; Unit }),
+                            Triple(ActionSaveQueueIcon, stringResource(R.string.queue_save), {
+                                defaultName = context.getString(R.string.queue_saved_name, SimpleDateFormat("dd-MM-yyyy HH:mm", Locale.getDefault()).format(Date()))
+                                naming = true
+                                Unit
+                            }),
                             Triple(ActionDuplicateIcon, stringResource(R.string.queue_dedupe), {
                                 scope.launch {
                                     val removed = withContext(Dispatchers.IO) { LMS.removeDuplicates() }
@@ -193,7 +222,34 @@ fun QueuePanel() {
                     )
                 }
             }
-            if (pickPlayer) {
+            if (naming) {
+                Popup(
+                    popupPositionProvider = topCenterPopup,
+                    onDismissRequest = { naming = false },
+                    properties = PopupProperties(focusable = true),
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .width(560.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xF2181818))
+                            .padding(8.dp)
+                    ) {
+                        Text(
+                            stringResource(R.string.queue_save), color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(start = 12.dp, top = 4.dp)
+                        )
+                        SaveQueueField(defaultName) { name ->
+                            scope.launch {
+                                val ok = withContext(Dispatchers.IO) { LMS.saveQueueAsPlaylist(name) }
+                                val text = if (ok) context.getString(R.string.queue_saved_server, name) else context.getString(R.string.queue_save_server_failed)
+                                Toast.makeText(context, text, Toast.LENGTH_LONG).show()
+                                naming = false
+                            }
+                        }
+                    }
+                }
+            } else if (pickPlayer) {
                 // Players hidden in the main menu are left out here too
                 val others = LMS.players.filter { it.second != LMS.playerMac && it.second !in AppConfig.current.hiddenPlayers }
                 if (others.isEmpty()) {
@@ -327,4 +383,54 @@ private fun QueueMoveButton(text: String, modifier: Modifier, onBack: () -> Unit
         Icon(Icons.Outlined.SwapHoriz, contentDescription = null, tint = Color.White.copy(alpha = 0.9f), modifier = Modifier.size(18.dp))
         Text(text = text, color = Color.White.copy(alpha = 0.9f), fontSize = 13.sp, maxLines = 1, modifier = Modifier.padding(start = 6.dp))
     }
+}
+
+// Text field for the name of the queue to save, with the offered name selected so typing replaces it.
+// OK opens the keyboard, Done saves (an empty name gives the offered one).
+@Composable
+private fun SaveQueueField(offered: String, onDone: (String) -> Unit) {
+    val keyboard = LocalSoftwareKeyboardController.current
+    val fieldFocus = remember { FocusRequester() }
+    var value by remember(offered) { mutableStateOf(TextFieldValue(offered, TextRange(0, offered.length))) }
+    LaunchedEffect(offered) {
+        delay(60)
+        try { fieldFocus.requestFocus() } catch (_: Exception) { }
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 8.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(Color.White.copy(alpha = 0.12f))
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+    ) {
+        BasicTextField(
+            value = value,
+            onValueChange = { value = it; NavState.lastTyped = System.currentTimeMillis() },
+            singleLine = true,
+            textStyle = TextStyle(color = Color.White, fontSize = 14.sp),
+            cursorBrush = SolidColor(Color.White),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = {
+                keyboard?.hide()
+                onDone(value.text.trim().ifEmpty { offered })
+            }),
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusRequester(fieldFocus)
+                .onKeyEvent { event ->
+                    if (event.type == KeyEventType.KeyDown &&
+                        (event.key == Key.DirectionCenter || event.key == Key.Enter)) {
+                        keyboard?.show()
+                        true
+                    } else false
+                }
+        )
+    }
+}
+
+// Places a popup at the top centre of the screen (the on-screen keyboard fills the lower part).
+private val topCenterPopup = object : PopupPositionProvider {
+    override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize) =
+        IntOffset((windowSize.width - popupContentSize.width) / 2, 40)
 }
