@@ -9,6 +9,7 @@
 - The play/pause button also gets the focus back within a second when it is lost without a key press.
 
 ### Changed
+- Settings has a new row, **About**, that shows the version of LMSNP and the release notes of all versions.
 - The YouTube app has the Material icon in the Apps list.
 
 ### Tested and not tested
