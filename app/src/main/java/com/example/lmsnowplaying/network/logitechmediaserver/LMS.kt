@@ -270,12 +270,31 @@ object LMS{
     private suspend fun <T> safeCall(what: String, default: T, block: suspend () -> T): T {
         return try {
             block()
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e
         } catch (e: IOException) {
             Log.w(TAG, "$what failed (network): ${e.message}")
             default
         } catch (e: JSONException) {
             Log.w(TAG, "$what failed (bad response): ${e.message}")
             default
+        } catch (e: Exception) {
+            Log.w(TAG, "$what failed (${e.javaClass.simpleName}): ${e.message}")
+            default
+        }
+    }
+
+    // Runs one plugin check; any failure is logged and only affects that check.
+    // Returns false when the check failed.
+    private suspend fun checkPlugin(what: String, block: suspend () -> Unit): Boolean {
+        return try {
+            block()
+            true
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "$what check failed: ${e.javaClass.simpleName}: ${e.message}")
+            false
         }
     }
 
@@ -1320,18 +1339,24 @@ object LMS{
         safeCall("runPluginCommand", Unit) { rpcPlayer(mac, command); Unit }
     }
 
+    // Whether Don't Stop The Music is there. Lyrion drops the connection on a command of a plugin that is
+    // switched off, so this asks "can" first; a failed check counts as there.
+    private suspend fun dstmInstalled(): Boolean = hasCommand(listOf("dontstopthemusicsetting"))
+
     suspend fun getPlayModes(): PlayModes? {
         val mac = playerMac
         if (mac == "00:00:00:00:00:00") return null
         return safeCall("getPlayModes", null) {
             val status = rpcPlayer(mac, listOf("status", "-", 1))
             val dstm = rpcPlayer(mac, listOf("playerpref", "plugin.dontstopthemusic:provider", "?"))
+            // The stored provider stays in Lyrion when the plugin is switched off, so it only counts while DSTM is there
             val provider = dstm.optString("_p2", "")
-            if (provider.isNotBlank() && provider != "0") lastDstmProvider = provider
+            val dstmActive = provider.isNotBlank() && provider != "0" && dstmInstalled()
+            if (dstmActive) lastDstmProvider = provider
             PlayModes(
                 repeat = status.optInt("playlist repeat", 0),
                 shuffle = status.optInt("playlist shuffle", 0),
-                dstmProvider = if (provider == "0") "" else provider,
+                dstmProvider = if (dstmActive) provider else "",
             )
         }
     }
@@ -1409,46 +1434,69 @@ object LMS{
     // Which Auto Mix plugins exist on the server and which one is on for
     // the current player. A plugin counts as available when its setting
     // can be read.
-    suspend fun getMixState(): MixState {
+    suspend fun getMixState(): MixState = getMixStateOrNull() ?: MixState()
+
+    // Null when every check failed (server not reachable): the caller keeps what it had,
+    // while an empty state means the plugins really are not there.
+    suspend fun getMixStateOrNull(): MixState? {
         val mac = playerMac
         if (mac == "00:00:00:00:00:00") return MixState()
-        return safeCall("getMixState", MixState()) {
+        return safeCall<MixState?>("getMixState", null) {
             val available = mutableSetOf<MixPlugin>()
             val on = mutableSetOf<MixPlugin>()
+            var checks = 0
+            var failed = 0
+            suspend fun runCheck(what: String, block: suspend () -> Unit) {
+                checks++
+                if (!checkPlugin(what, block)) failed++
+            }
 
-            val sc = playerPref(mac, "plugin.SugarCube:sugarcube_status")
-            if (sc.isNotBlank()) { available.add(MixPlugin.SUGARCUBE); if (sc == "1") on.add(MixPlugin.SUGARCUBE) }
+            // Each plugin is checked on its own: a failing check only drops that plugin.
+            // "can" goes first: a removed plugin leaves its stored prefs behind, and Lyrion drops the
+            // connection on a command of a plugin that is switched off.
+            runCheck("SugarCube") {
+                val sc = if (hasCommand(listOf("sugarcube", "setting"))) playerPref(mac, "plugin.SugarCube:sugarcube_status") else ""
+                if (sc.isNotBlank()) { available.add(MixPlugin.SUGARCUBE); if (sc == "1") on.add(MixPlugin.SUGARCUBE) }
+            }
 
-            val mip = playerPref(mac, "plugin.mipster:chainStatus")
-            if (mip.isNotBlank()) { available.add(MixPlugin.MIPSTER); if (mip == "1") on.add(MixPlugin.MIPSTER) }
+            runCheck("MIPster") {
+                val mip = if (hasCommand(listOf("mipster", "setting"))) playerPref(mac, "plugin.mipster:chainStatus") else ""
+                if (mip.isNotBlank()) { available.add(MixPlugin.MIPSTER); if (mip == "1") on.add(MixPlugin.MIPSTER) }
+            }
 
-            val rf = rpcPlayer(masterMac(mac), listOf("randomflow", "mixsettings"))
-            if (rf.has("mixRunning")) {
-                available.add(MixPlugin.RANDOMFLOW)
-                if (rf.optString("mixRunning").lowercase() in listOf("1", "true")) on.add(MixPlugin.RANDOMFLOW)
+            runCheck("Random Flow") {
+                val rf = if (hasCommand(listOf("randomflow", "mixsettings"))) rpcPlayer(masterMac(mac), listOf("randomflow", "mixsettings")) else JSONObject()
+                if (rf.has("mixRunning")) {
+                    available.add(MixPlugin.RANDOMFLOW)
+                    if (rf.optString("mixRunning").lowercase() in listOf("1", "true")) on.add(MixPlugin.RANDOMFLOW)
+                }
             }
 
             // Lyrion's own Random Mix: "randomplayisactive" answers with the
             // running mix type (empty when none); no answer = plugin missing.
-            val rp = rpcPlayer(mac, listOf("randomplayisactive"))
-            if (rp.has("_randomplayisactive")) {
-                available.add(MixPlugin.RANDOMPLAY)
-                val type = rp.optString("_randomplayisactive", "")
-                if ((type.isNotBlank() && type != "0" && type != "null") || randomMixMac == mac) {
-                    on.add(MixPlugin.RANDOMPLAY)
+            runCheck("Random Mix") {
+                val rp = if (hasCommand(listOf("randomplayisactive"))) rpcPlayer(mac, listOf("randomplayisactive")) else JSONObject()
+                if (rp.has("_randomplayisactive")) {
+                    available.add(MixPlugin.RANDOMPLAY)
+                    val type = rp.optString("_randomplayisactive", "")
+                    if ((type.isNotBlank() && type != "0" && type != "null") || randomMixMac == mac) {
+                        on.add(MixPlugin.RANDOMPLAY)
+                    }
                 }
             }
 
-            val dstmMenu = rpcPlayer(mac, listOf("dontstopthemusicsetting"))
-            if ((dstmMenu.optJSONArray("item_loop")?.length() ?: 0) > 1) {
-                available.add(MixPlugin.DSTM)
-                val provider = playerPref(mac, "plugin.dontstopthemusic:provider")
-                if (provider.isNotBlank() && provider != "0") {
-                    lastDstmProvider = provider
-                    on.add(MixPlugin.DSTM)
+            runCheck("DSTM") {
+                val dstmMenu = if (dstmInstalled()) rpcPlayer(mac, listOf("dontstopthemusicsetting")) else JSONObject()
+                if ((dstmMenu.optJSONArray("item_loop")?.length() ?: 0) > 1) {
+                    available.add(MixPlugin.DSTM)
+                    val provider = playerPref(mac, "plugin.dontstopthemusic:provider")
+                    if (provider.isNotBlank() && provider != "0") {
+                        lastDstmProvider = provider
+                        on.add(MixPlugin.DSTM)
+                    }
                 }
             }
-            MixState(available, on)
+            if (failed == checks) null else MixState(available, on)
         }
     }
 

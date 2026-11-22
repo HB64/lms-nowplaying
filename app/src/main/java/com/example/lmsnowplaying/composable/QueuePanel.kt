@@ -27,6 +27,7 @@ import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -145,6 +146,20 @@ fun QueuePanel() {
 
     val goBack: () -> Unit = {
         if (naming) naming = false else if (pickPlayer) pickPlayer = false else if (selected != null) selected = null else NavState.showQueue = false
+    }
+    // After a mouse click cleared the focus, a D-pad key comes back here (see NowPlaying)
+    DisposableEffect(Unit) {
+        NavState.panelRefocus = {
+            try {
+                when {
+                    naming -> false
+                    selected != null || pickPlayer -> { actionFocus.requestFocus(); true }
+                    queue?.tracks?.isNotEmpty() == true -> { currentFocus.requestFocus(); true }
+                    else -> { emptyFocus.requestFocus(); true }
+                }
+            } catch (_: Exception) { false }
+        }
+        onDispose { NavState.panelRefocus = null }
     }
     BackHandler(enabled = true) { goBack() }
 

@@ -34,6 +34,20 @@ import kotlin.system.exitProcess
 
 class MainActivity : ComponentActivity() {
 
+    // A D-pad key while nothing on the screen has focus (a mouse click clears it): Compose never
+    // sees that key and Android would pick a button itself, so the screen puts the focus back first.
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN && !NavState.anyFocus && event.keyCode in dpadKeys) {
+            if (NavState.refocus?.invoke() == true) return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    private val dpadKeys = setOf(
+        KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT,
+        KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN,
+    )
+
     // Volume keys control the selected player (step from settings, mute on
     // the mute key). Without a selected player they keep their normal job.
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {

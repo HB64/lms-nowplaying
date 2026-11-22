@@ -433,6 +433,7 @@ fun PlayerScreen(){
     // Later (after 30s) the focus ring itself is hidden too, until the next key press.
     var refocused by remember { mutableStateOf(false) }
     var playHasFocus by remember { mutableStateOf(false) }
+    var playFocusLostAt by remember { mutableStateOf(0L) }
     // At start the layout can still swap (new artwork, player data) and take the
     // focus away from the play button: keep asking for a few seconds, until the
     // user presses a key.
@@ -464,6 +465,12 @@ fun PlayerScreen(){
                 }
                 continue
             }
+            // Focus lost without any key press (e.g. after the server restarts): give it back quickly
+            if (playFocusLostAt > 0L && !playHasFocus && System.currentTimeMillis() - playFocusLostAt > 800 &&
+                maxOf(lastKeyTime, NavState.lastTyped) < playFocusLostAt) {
+                try { playFocusRequester.requestFocus() } catch (_: Exception) { }
+                playFocusLostAt = 0L
+            }
             // Keep asking until the play button really has focus: the layout
             // can swap (new artwork) and throw the old button away with its
             // focus, which used to leave it on e.g. the queue button.
@@ -477,7 +484,19 @@ fun PlayerScreen(){
         }
     }
 
+    // A D-pad key while nothing has focus (e.g. after a mouse click) comes here from
+    // MainActivity: back into the open panel, or to Play/Pause, instead of where Android picks
+    DisposableEffect(Unit) {
+        NavState.refocus = {
+            if (NavState.menuOpen || NavState.tipOpen || NavState.showInfo || NavState.showSettings) false
+            else if (NavState.showBrowse || NavState.showQueue) NavState.panelRefocus?.invoke() == true
+            else try { playFocusRequester.requestFocus(); true } catch (_: Exception) { false }
+        }
+        onDispose { NavState.refocus = null; NavState.anyFocus = true }
+    }
+
     Box(contentAlignment = Alignment.Center, modifier = Modifier
+        .onFocusChanged { NavState.anyFocus = it.hasFocus }
         .onPreviewKeyEvent {
             lastKeyTime = System.currentTimeMillis()
             refocused = false
@@ -845,7 +864,11 @@ fun PlayerScreen(){
                     size = 52.dp,
                     modifier = Modifier
                         .focusRequester(playFocusRequester)
-                        .onFocusChanged { playHasFocus = it.isFocused },
+                        .onFocusChanged {
+                            playHasFocus = it.isFocused
+                            // Only a loss without recent key input counts (the remote did not cause it)
+                            playFocusLostAt = if (it.isFocused || System.currentTimeMillis() - maxOf(lastKeyTime, NavState.lastTyped) < 1500) 0L else System.currentTimeMillis()
+                        },
                     onClick = {
                         if (LMS.playerMac != "00:00:00:00:00:00") {
                             val newPlaying = !playing

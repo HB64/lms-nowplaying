@@ -55,6 +55,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -339,6 +340,13 @@ fun BrowseScreen() {
     }
     BackHandler(enabled = true) { goBack() }
 
+    // After a mouse click cleared the focus, a D-pad key comes back here (see NowPlaying)
+    val panelFocus = remember { FocusRequester() }
+    DisposableEffect(Unit) {
+        NavState.panelRefocus = { try { panelFocus.requestFocus(); true } catch (_: Exception) { false } }
+        onDispose { NavState.panelRefocus = null }
+    }
+
     // Shown as a panel on top of Now Playing (like the player menu), not
     // as a full screen.
     Box(
@@ -348,6 +356,7 @@ fun BrowseScreen() {
             // Keep D-pad focus inside the panel: it stays open until Back,
             // so focus must not wander off to the buttons behind it.
             .focusProperties { exit = { FocusRequester.Cancel } }
+            .focusRequester(panelFocus)
             .focusGroup()
             // D-pad left on a list row = one step back, like Back (the A-Z
             // strip handles its own left key first, so it isn't affected).
@@ -1777,7 +1786,9 @@ private fun MixPanel(onMusicIp: () -> Unit) {
 
     LaunchedEffect(Unit) {
         while (true) {
-            state = withPending(withContext(Dispatchers.IO) { LMS.getMixState() }, pendingOn)
+            // No answer (server restarting): keep what is shown, so the list and focus stay put
+            val fresh = withContext(Dispatchers.IO) { LMS.getMixStateOrNull() }
+            if (fresh != null) state = withPending(fresh, pendingOn)
             kotlinx.coroutines.delay(3000)
         }
     }
@@ -2044,9 +2055,11 @@ private fun MixPanel(onMusicIp: () -> Unit) {
                     if (cmd.firstOrNull() == LMS.APP_MIX_TYPE) {
                         NavState.activeMixIcon = randomMixIcon(cmd.getOrNull(1) as? String ?: "tracks")
                     }
-                    // Mix Mode decides which other settings exist (e.g. Batch size)
-                    if (active != null && cmd.getOrNull(1) == "setmixmode") {
-                        settings = LMS.pluginSettings(active)
+                    // A choice can change which other settings exist (Mix Mode: Batch size;
+                    // a MIPster recipe: no Style/Variety), so read them again
+                    if (active != null && cmd.firstOrNull() != LMS.APP_MIX_TYPE) {
+                        val fresh = LMS.pluginSettings(active)
+                        settings = fresh.map { if (it.listCommand != null) LMS.loadPluginList(it) else it }
                     }
                 })
                 // Random Mix genres: a folded list; OK switches a genre on or off
@@ -2381,6 +2394,7 @@ private val materialAppSvg = mapOf(
     "spotty" to "material/html/images/spotify.svg",
     "tidal" to "material/html/images/tidal.svg",
     "squeezecloud" to "material/html/images/soundcloud.svg",
+    "youtube" to "material/html/images/youtube.svg",
 )
 
 // Address of a picture the server gives for a radio item (relative to the server, or already absolute).

@@ -70,6 +70,11 @@ object NavState {
 
     // True while the Queue panel (button at the bottom right) is showing.
     var showQueue by mutableStateOf(false)
+    // Set by the open Browse / Queue panel: puts the focus back inside it (true when it did)
+    var panelRefocus: (() -> Boolean)? = null
+    // Whether anything on the Now Playing screen has focus, and how to give it back (true when it did)
+    var anyFocus = true
+    var refocus: (() -> Boolean)? = null
 
     // The color of the progress bar (taken from the album cover), so other
     // panels can use the same color.
