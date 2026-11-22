@@ -167,6 +167,9 @@ fun SettingsScreen(
     var syncTick by remember { mutableStateOf(0) }
     var syncPrefs by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
     val syncListState = rememberLazyListState()
+    // About: the release notes of all versions, one line per item; popupIndex is the top line
+    val aboutLines = remember { loadAboutLines(context) }
+    val aboutState = rememberLazyListState()
 
     // "list", "lms" or "jellyfin"; popup is "", "bg", "motion", "vol", "mymorder" or "player".
     var screen by remember { mutableStateOf("list") }
@@ -220,7 +223,8 @@ fun SettingsScreen(
     // Row 10 (only from the ⋮ menu): the order of the My Music items.
     // Row 11 (only from the ⋮ menu): the track info button on/off.
     // Row 12 (only from the ⋮ menu): Synchronize… (couple players / sync settings of the selected player).
-    val rowCount = if (hasCancel) 13 else 9
+    // Row 13 (only from the ⋮ menu): About (version and release notes).
+    val rowCount = if (hasCancel) 14 else 9
     val rp = if (hasCancel) 6.dp else 10.dp
     val playerOk: () -> Boolean = { LMS.playerMac.isNotBlank() && LMS.playerMac != "00:00:00:00:00:00" }
     val syncChange: (String, Int) -> Unit = { name, v ->
@@ -465,6 +469,7 @@ fun SettingsScreen(
                                     "syncmenu" -> 2
                                     "syncpick" -> syncCands.size.coerceAtLeast(1)
                                     "syncset" -> LMS.syncPrefNames.size
+                                    "about" -> aboutLines.size.coerceAtLeast(1)
                                     else -> playerRows.size
                                 }
                                 when {
@@ -484,6 +489,10 @@ fun SettingsScreen(
                                             persist()
                                         }
                                     }
+                                    // About: scroll, no wrapping round
+                                    popup == "about" && event.key == Key.DirectionDown -> popupIndex = (popupIndex + 1).coerceAtMost(count - 1)
+                                    popup == "about" && event.key == Key.DirectionUp -> popupIndex = (popupIndex - 1).coerceAtLeast(0)
+                                    event.key == Key.DirectionLeft && popup == "about" -> popup = ""
                                     event.key == Key.DirectionDown -> popupIndex = (popupIndex + 1) % count
                                     event.key == Key.DirectionUp -> popupIndex = (popupIndex - 1 + count) % count
                                     // Default-player list: D-pad right shows/hides that player in the ⋮ menu.
@@ -520,6 +529,7 @@ fun SettingsScreen(
                                             persist()
                                         }
                                         "mymorder" -> orderGrab = !orderGrab
+                                        "about" -> popup = ""
                                         "defplayer" -> {
                                             if (popupIndex == -1) {
                                                 defInfoShown = !defInfoShown
@@ -605,6 +615,7 @@ fun SettingsScreen(
                                         persist()
                                     }
                                     12 -> if (hasCancel && playerOk()) { popupIndex = 0; popup = "syncmenu" }
+                                    13 -> if (hasCancel) { popupIndex = 0; popup = "about" }
                                 }
                                 else -> return@onKeyEvent false
                             }
@@ -647,6 +658,23 @@ fun SettingsScreen(
                             SRow(stringResource(R.string.settings_mymusic_order_hint), null, false, dim = true)
                             orderedIds().forEachIndexed { i, id ->
                                 SRow((if (orderGrab && popupIndex == i) "⇅  " else "") + myMusicLabels[myMusicIds.indexOf(id)], null, popupIndex == i)
+                            }
+                        }
+                        "about" -> {
+                            SRow(stringResource(R.string.settings_about), Icons.Outlined.Info, false, bold = true)
+                            SRow("LMS-NowPlaying ${BuildConfig.VERSION_NAME}", null, false, dim = true)
+                            LaunchedEffect(popupIndex) { aboutState.scrollToItem(popupIndex) }
+                            LazyColumn(state = aboutState, modifier = Modifier.heightIn(max = 300.dp)) {
+                                items(aboutLines.size) { i ->
+                                    val (kind, text) = aboutLines[i]
+                                    Text(
+                                        text,
+                                        color = if (kind == 1) Color.White.copy(alpha = 0.6f) else Color.White,
+                                        fontWeight = if (kind == 0) FontWeight.Bold else null,
+                                        fontSize = if (kind == 0) 16.sp else 13.sp,
+                                        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = if (kind == 0) 12.dp else 2.dp, bottom = 2.dp)
+                                    )
+                                }
                             }
                         }
                         "defplayer" -> {
@@ -839,6 +867,7 @@ fun SettingsScreen(
                                 SRow(stringResource(R.string.settings_mymusic_order), null, highlighted == 10, vPad = rp)
                                 SRow("${stringResource(R.string.settings_track_info)}: ${if (showTrackInfoLine) onLabel else offLabel}", Icons.Outlined.Info, highlighted == 11, vPad = rp)
                                 SRow(stringResource(R.string.menu_sync), Icons.Outlined.Link, highlighted == 12, dim = !playerOk(), vPad = rp)
+                                SRow(stringResource(R.string.settings_about), Icons.Outlined.Info, highlighted == 13, vPad = rp)
                             } else {
                                 SRow(stringResource(R.string.settings_save_and_start), null, highlighted == saveRow, vPad = rp, bold = true)
                             }
@@ -922,6 +951,21 @@ fun SettingsScreen(
 }
 
 // A row in the settings list: optional icon, then text; highlighted while the D-pad is on it.
+// The release notes in assets/changelog.md as lines: 0 = version, 1 = heading, 2 = text
+private fun loadAboutLines(context: android.content.Context): List<Pair<Int, String>> = try {
+    fun clean(s: String) = s.replace("**", "").replace("`", "").replace(Regex("\\[([^\\]]*)\\]\\([^)]*\\)"), "$1")
+    context.assets.open("changelog.md").bufferedReader().readLines().mapNotNull { raw ->
+        val line = raw.trimEnd()
+        when {
+            line.isBlank() -> null
+            line.startsWith("## ") -> 0 to clean(line.removePrefix("## "))
+            line.startsWith("### ") -> 1 to clean(line.removePrefix("### "))
+            line.startsWith("- ") -> 2 to "•  " + clean(line.removePrefix("- "))
+            else -> 2 to clean(line)
+        }
+    }
+} catch (_: Exception) { emptyList() }
+
 @Composable
 private fun SRow(
     text: String, icon: ImageVector?, highlighted: Boolean, bold: Boolean = false,

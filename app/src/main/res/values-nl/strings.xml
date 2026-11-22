@@ -33,6 +33,7 @@
     <string name="settings_track_info_button">Trackinfo-knop</string>
     <string name="settings_track_info">Trackinfo</string>
     <string name="settings_mymusic_order">Mijn Muziek-volgorde</string>
+    <string name="settings_about">Over</string>
     <string name="settings_mymusic_order_hint">OK: oppakken / neerzetten  ·  Omhoog / Omlaag: verplaatsen</string>
     <string name="settings_mymusic_items">Mijn Muziek-items</string>
     <string name="menu_standby_prefix">Stand-by bij afsluiten</string>

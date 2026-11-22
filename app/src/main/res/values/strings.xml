@@ -33,6 +33,7 @@
     <string name="settings_track_info_button">Track info button</string>
     <string name="settings_track_info">Track info</string>
     <string name="settings_mymusic_order">My Music order</string>
+    <string name="settings_about">About</string>
     <string name="settings_mymusic_order_hint">OK: pick up / put down  ·  Up / Down: move</string>
     <string name="settings_mymusic_items">My Music items</string>
     <string name="menu_standby_prefix">Standby on exit</string>
