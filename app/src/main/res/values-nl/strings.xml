@@ -148,6 +148,7 @@
     <string name="info_overview_none">Geen relevante informatie gevonden.</string>
     <string name="common_loading">Laden…</string>
     <string name="common_no_player">Geen speler geselecteerd</string>
+    <string name="common_no_answer">Geen antwoord van de server, het kan nog starten</string>
     <string name="browse_no_genres">Geen genres gevonden</string>
     <string name="browse_no_artists">Geen artiesten gevonden</string>
     <string name="browse_no_albums">Geen albums gevonden</string>
@@ -249,6 +250,7 @@
     <string name="menu_local_player_auto">auto-start</string>
     <string name="menu_local_player_autostart_prefix">Lokale speler auto-start</string>
     <string name="menu_local_player_none">Geen</string>
+    <string name="default_player_last_used">Laatst gebruikt</string>
     <string name="settings_local_player_section">Lokale speler op dit apparaat</string>
     <string name="settings_local_player_autostart">Lokale speler starten als LMSNP start</string>
     <string name="settings_not_set">Niet ingesteld</string>
@@ -269,4 +271,7 @@
     <string name="menu_volume_slider_prefix">Volumeslider</string>
     <string name="menu_local_player_start_now">Lokale speler starten</string>
     <string name="menu_local_player_stop_now">Lokale speler stoppen</string>
+    <string name="exit_confirm_body">Weet je het zeker?</string>
+    <string name="exit_confirm_cancel">Nee</string>
+    <string name="exit_confirm_yes">Ja</string>
 </resources>

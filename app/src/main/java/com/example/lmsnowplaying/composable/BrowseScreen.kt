@@ -105,7 +105,9 @@ import com.example.lmsnowplaying.network.logitechmediaserver.PluginSetting
 import com.example.lmsnowplaying.network.logitechmediaserver.RadioEntry
 import com.example.lmsnowplaying.network.logitechmediaserver.SearchResults
 import com.example.lmsnowplaying.settings.NavState
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -134,6 +136,12 @@ private fun browseSection(level: BrowseLevel): String = when (level) {
     BrowseLevel.RADIO, BrowseLevel.RADIO_ACTIONS, BrowseLevel.RADIO_SEARCH -> "RADIO"
     else -> level.name
 }
+
+// The lists an album (or its tracks) can be opened from
+private val albumOrigins = setOf(
+    BrowseLevel.ARTISTS, BrowseLevel.GENRES, BrowseLevel.NEW_MUSIC, BrowseLevel.ALBUM_ARTISTS,
+    BrowseLevel.COMPOSERS, BrowseLevel.YEARS, BrowseLevel.RELEASES, BrowseLevel.SEARCH,
+)
 
 private fun restoreBrowse(section: String): Pair<BrowseLevel, List<BrowseLevel>> = when (section) {
     "MY_MUSIC" -> BrowseLevel.MY_MUSIC to listOf(BrowseLevel.ROOT)
@@ -256,9 +264,16 @@ fun BrowseScreen() {
 
     // Radio: the path of levels opened so far (the first is the list of radio
     // plugins, then the levels inside the chosen plugin) and that plugin's command.
+    // Reopening Radio or Apps returns to the level that was open (if it was the same one of the two)
+    val savedRadio = remember {
+        NavState.radioPath.takeIf {
+            restored.first == BrowseLevel.RADIO && it.isNotEmpty() && (it.first().id == "apps") == (startSection == "APPS")
+        }
+    }
     val radioPath = remember {
         mutableStateListOf<BrowseItem>().apply {
-            if (restored.first == BrowseLevel.RADIO) {
+            if (savedRadio != null) addAll(savedRadio)
+            else if (restored.first == BrowseLevel.RADIO) {
                 if (startSection == "APPS") add(BrowseItem("apps", appContext.getString(R.string.browse_apps)))
                 else add(BrowseItem("", appContext.getString(R.string.browse_radio)))
             }
@@ -266,10 +281,17 @@ fun BrowseScreen() {
     }
     // Remember where we are; Apps and Radio share their levels but are separate sections
     LaunchedEffect(level) {
-        val section = browseSection(level)
+        // Albums and tracks are reopened at the list they were reached from (New Music, Genres, ...), not at Artists
+        val origin = if (level == BrowseLevel.ALBUMS || level == BrowseLevel.TRACKS || level == BrowseLevel.TRACK_ACTIONS)
+            stack.lastOrNull { it in albumOrigins } else null
+        val section = if (origin != null) browseSection(origin) else browseSection(level)
         NavState.lastBrowse = if (section == "RADIO" && radioPath.firstOrNull()?.id == "apps") "APPS" else section
     }
-    var radioCmd by remember { mutableStateOf("") }
+    var radioCmd by remember { mutableStateOf(if (savedRadio != null) NavState.radioCmd else "") }
+    LaunchedEffect(radioPath.size, radioPath.firstOrNull()?.id, radioPath.lastOrNull()?.id, radioCmd) {
+        NavState.radioPath = radioPath.toList()
+        NavState.radioCmd = radioCmd
+    }
     var actionRadio by remember { mutableStateOf<BrowseItem?>(null) }
     // The radio search being typed in: the item it belongs to ("" = the plugin itself)
     var radioSearch by remember { mutableStateOf(BrowseItem("", "")) }
@@ -886,6 +908,10 @@ private fun RadioList(
     }
 
     val imageLoader = rememberLmsImageLoader()
+    // Each level remembers the row last focused
+    val memKey = (if (apps) "APPS" else "RADIO") + ":" + path.joinToString("/") { it.id + ":" + it.name }
+    val startIndex = remember(memKey, shownCount) { (NavState.listFocus[memKey] ?: 0).coerceIn(0, (shownCount - 1).coerceAtLeast(0)) }
+    val listState = rememberLazyListState()
     val firstFocus = remember { FocusRequester() }
     val rowFocus = remember { FocusRequester() }
     // An opened playable item (album, playlist, stream) has play icons pinned above its list
@@ -893,6 +919,7 @@ private fun RadioList(
     // Favorite id and name while the rename field (after saving the opened item) is shown
     var rename by remember(folderId) { mutableStateOf<Pair<String, String>?>(null) }
     LaunchedEffect(atRoot, path.size, folderId, shownCount) {
+        if (!folderActions && startIndex > 0) listState.scrollToItem(startIndex)
         try { (if (folderActions) rowFocus else firstFocus).requestFocus() } catch (_: Exception) { }
     }
 
@@ -904,7 +931,7 @@ private fun RadioList(
         )
         rename?.let { (id, name) -> RenameFavoriteField(id, name) { rename = null } }
     }
-    HintLazyColumn {
+    HintLazyColumn(state = listState) {
         if (atRoot) {
             val list = radios ?: emptyList()
             items(list.size) { index ->
@@ -928,7 +955,7 @@ private fun RadioList(
                         round = false,
                         imageLoader = imageLoader,
                         onClick = { open() },
-                        modifier = if (index == 0) Modifier.focusRequester(firstFocus) else Modifier,
+                        modifier = (if (index == startIndex) Modifier.focusRequester(firstFocus) else Modifier).trackFocus(memKey, index),
                         tintWhite = svgPath != null,
                         fallbackUrl = radioImageUrl(radio.icon),
                     )
@@ -936,7 +963,7 @@ private fun RadioList(
                     BrowseRow(
                         radio.name,
                         icon = radioEntryIcon(radio.cmd),
-                        modifier = if (index == 0) Modifier.focusRequester(firstFocus) else Modifier,
+                        modifier = (if (index == startIndex) Modifier.focusRequester(firstFocus) else Modifier).trackFocus(memKey, index),
                         onClick = { open() }
                     )
                 }
@@ -947,7 +974,7 @@ private fun RadioList(
                 RadioEntryRow(
                     entry = list[index],
                     imageLoader = imageLoader,
-                    modifier = if (index == 0) Modifier.focusRequester(firstFocus) else Modifier,
+                    modifier = (if (index == startIndex) Modifier.focusRequester(firstFocus) else Modifier).trackFocus(memKey, index),
                     onSearch = { onSearch(cmd, BrowseItem(it.id, it.name)) },
                     onFolder = onFolder,
                     onItem = onItem,
@@ -1111,6 +1138,8 @@ private fun FavoritesList(
         scope.launch {
             val ok = withContext(Dispatchers.IO) { LMS.favoritesControl(cmd, folder.id) }
             Toast.makeText(context, if (ok) message else context.getString(R.string.common_no_player), Toast.LENGTH_SHORT).show()
+            // Playing now: back to Now Playing (Browse reopens where it was left)
+            if (ok && cmd == "load") NavState.showBrowse = false
         }
     }
 
@@ -1251,11 +1280,19 @@ private fun playActions(
     onSaved: (String, String) -> Unit = { _, _ -> },
 ): List<Triple<ImageVector, String, () -> Unit>> {
     val context = LocalContext.current.applicationContext
-    val scope = rememberCoroutineScope()
+    // Not rememberCoroutineScope: onDone() closes this menu, which would cancel the request half way
     val run: (String, String) -> Unit = { cmd, message ->
-        scope.launch {
+        CoroutineScope(SupervisorJob() + Dispatchers.Main).launch {
             val ok = withContext(Dispatchers.IO) { LMS.favoritesControl(cmd, id, plugin) }
-            Toast.makeText(context, if (ok) message else context.getString(R.string.common_no_player), Toast.LENGTH_SHORT).show()
+            // A failed request is no player, or a server that did not answer in time (the stream may still start)
+            val text = when {
+                ok -> message
+                LMS.playerMac == "00:00:00:00:00:00" -> context.getString(R.string.common_no_player)
+                else -> context.getString(R.string.common_no_answer)
+            }
+            Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
+            // Playing now: back to Now Playing (Browse reopens where it was left)
+            if (ok && cmd == "load") NavState.showBrowse = false
         }
         onDone()
     }
@@ -1429,6 +1466,8 @@ private fun PlaylistTracks(playlist: BrowseItem, selectedId: String, onTrack: (B
         scope.launch {
             val ok = withContext(Dispatchers.IO) { LMS.playlistControl(cmd, playlistId = playlist.id) }
             Toast.makeText(context, if (ok) context.getString(message) else context.getString(R.string.common_no_player), Toast.LENGTH_SHORT).show()
+            // Playing now: back to Now Playing (Browse reopens where it was left)
+            if (ok && cmd == "load") NavState.showBrowse = false
         }
     }
     TrackDetailList(
@@ -1450,6 +1489,8 @@ private fun MusicIpTracks(mix: List<Pair<BrowseTrack, String>>?, selectedId: Str
         scope.launch {
             val ok = withContext(Dispatchers.IO) { LMS.playTrackIds(cmd, mix.orEmpty().map { it.first.id }) }
             Toast.makeText(context, if (ok) context.getString(message) else context.getString(R.string.common_no_player), Toast.LENGTH_SHORT).show()
+            // Playing now: back to Now Playing (Browse reopens where it was left)
+            if (ok && cmd == "load") NavState.showBrowse = false
         }
     }
     TrackDetailList(
@@ -1985,15 +2026,18 @@ private fun MixPanel(onMusicIp: () -> Unit) {
                 }
             }
             val actions = buildList<Triple<ImageVector, String, () -> Unit>> {
+                // Closing Browse would cancel a request in this panel's own scope, so these two use their own
                 add(Triple(StartMixIcon, stringResource(R.string.mix_start_new), {
-                    scope.launch(Dispatchers.IO) { LMS.mixAction(active, MixAction.START_MIX) }
+                    CoroutineScope(SupervisorJob() + Dispatchers.IO).launch { LMS.mixAction(active, MixAction.START_MIX) }
                     Toast.makeText(context, context.getString(R.string.mix_started), Toast.LENGTH_SHORT).show()
+                    NavState.showBrowse = false
                 }))
                 // Lyrion's Random Mix has no batches
                 if (active != MixPlugin.RANDOMPLAY && hasBatch) {
                     add(Triple(BatchStartIcon, stringResource(R.string.mix_start_batch), {
-                        scope.launch(Dispatchers.IO) { LMS.mixAction(active, MixAction.START_BATCH) }
+                        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch { LMS.mixAction(active, MixAction.START_BATCH) }
                         Toast.makeText(context, context.getString(R.string.mix_batch_started), Toast.LENGTH_SHORT).show()
+                        NavState.showBrowse = false
                     }))
                     add(Triple(BatchAddIcon, stringResource(R.string.mix_add_batch), {
                         scope.launch(Dispatchers.IO) { LMS.mixAction(active, MixAction.ADD_BATCH) }
@@ -2166,6 +2210,8 @@ private fun FolderList(
         scope.launch {
             val ok = withContext(Dispatchers.IO) { LMS.playlistControl(cmd, folderId = folder.id) }
             Toast.makeText(context, if (ok) message else context.getString(R.string.common_no_player), Toast.LENGTH_SHORT).show()
+            // Playing now: back to Now Playing (Browse reopens where it was left)
+            if (ok && cmd == "load") NavState.showBrowse = false
         }
     }
 
@@ -2877,6 +2923,8 @@ private fun TrackList(albumId: String, listState: LazyListState, selectedTrackId
         scope.launch {
             val ok = withContext(Dispatchers.IO) { LMS.playlistControl(cmd, albumId = albumId) }
             Toast.makeText(context, if (ok) message else context.getString(R.string.common_no_player), Toast.LENGTH_SHORT).show()
+            // Playing now: back to Now Playing (Browse reopens where it was left)
+            if (ok && cmd == "load") NavState.showBrowse = false
         }
     }
 
@@ -2939,11 +2987,13 @@ private fun TrackList(albumId: String, listState: LazyListState, selectedTrackId
 @Composable
 private fun TrackActions(track: BrowseTrack, onDone: () -> Unit) {
     val context = LocalContext.current.applicationContext
-    val scope = rememberCoroutineScope()
+    // Not rememberCoroutineScope: onDone() closes this menu, which would cancel the request half way
     val run: (String, String) -> Unit = { cmd, message ->
-        scope.launch {
+        CoroutineScope(SupervisorJob() + Dispatchers.Main).launch {
             val ok = withContext(Dispatchers.IO) { LMS.playlistControl(cmd, trackId = track.id) }
             Toast.makeText(context, if (ok) message else context.getString(R.string.common_no_player), Toast.LENGTH_SHORT).show()
+            // Playing now: back to Now Playing (Browse reopens where it was left)
+            if (ok && cmd == "load") NavState.showBrowse = false
         }
         onDone()
     }

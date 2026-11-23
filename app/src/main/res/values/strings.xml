@@ -148,6 +148,7 @@
     <string name="info_overview_none">No relevant information found.</string>
     <string name="common_loading">Loading…</string>
     <string name="common_no_player">No player selected</string>
+    <string name="common_no_answer">No answer from the server, it may still start</string>
     <string name="browse_no_genres">No genres found</string>
     <string name="browse_no_artists">No artists found</string>
     <string name="browse_no_albums">No albums found</string>
@@ -249,6 +250,7 @@
     <string name="menu_local_player_auto">auto-start</string>
     <string name="menu_local_player_autostart_prefix">Auto-start local player</string>
     <string name="menu_local_player_none">None</string>
+    <string name="default_player_last_used">Last used</string>
     <string name="settings_local_player_section">Local player on this device</string>
     <string name="settings_local_player_autostart">Start the local player when LMSNP starts</string>
     <string name="settings_not_set">Not set</string>
@@ -269,4 +271,7 @@
     <string name="menu_volume_slider_prefix">Volume slider</string>
     <string name="menu_local_player_start_now">Start local player</string>
     <string name="menu_local_player_stop_now">Stop local player</string>
+    <string name="exit_confirm_body">Are you sure?</string>
+    <string name="exit_confirm_cancel">No</string>
+    <string name="exit_confirm_yes">Yes</string>
 </resources>

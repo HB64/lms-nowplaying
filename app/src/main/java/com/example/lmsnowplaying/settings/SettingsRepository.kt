@@ -29,6 +29,8 @@ object SettingsRepository {
     private val JELLYFIN_API_KEY = stringPreferencesKey("jellyfin_api_key")
     private val DEFAULT_PLAYER_NAME = stringPreferencesKey("default_player_name")
     private val DEFAULT_PLAYER_MAC = stringPreferencesKey("default_player_mac")
+    private val LAST_PLAYER_NAME = stringPreferencesKey("last_player_name")
+    private val LAST_PLAYER_MAC = stringPreferencesKey("last_player_mac")
     private val BACKGROUND_STYLE = stringPreferencesKey("background_style")
     private val BACKGROUND_MOTION = intPreferencesKey("background_motion")
     private val STANDBY_ON_EXIT = booleanPreferencesKey("standby_on_exit")
@@ -198,6 +200,19 @@ object SettingsRepository {
             prefs[DEFAULT_PLAYER_NAME] = name
             prefs[DEFAULT_PLAYER_MAC] = mac
         }
+    }
+
+    // The player that was selected last (name, address): the start choice when no default player is set.
+    suspend fun saveLastPlayer(context: Context, name: String, mac: String) {
+        context.dataStore.edit { prefs ->
+            prefs[LAST_PLAYER_NAME] = name
+            prefs[LAST_PLAYER_MAC] = mac
+        }
+    }
+
+    suspend fun getLastPlayer(context: Context): Pair<String, String> {
+        val prefs = context.dataStore.data.first()
+        return (prefs[LAST_PLAYER_NAME] ?: "") to (prefs[LAST_PLAYER_MAC] ?: "")
     }
 
     // One-time "this app works best with SugarCube + Don't Stop The Music"

@@ -235,7 +235,7 @@ fun MyUI() {
                 mutableStateOf(if (returningFromSettings) settingsRowIndex else 0)
             }
             var menuHasFocus by remember { mutableStateOf(false) }
-            val noneLabel = stringResource(R.string.menu_local_player_none)
+            val noneLabel = stringResource(R.string.default_player_last_used)
             val shownList: List<Pair<String, String>> =
                 if (pickDefault) listOf(noneLabel to "") + data.toList() else if (onlyDefault) emptyList() else data.toList()
             val listSize = shownList.size

@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
+import com.example.lmsnowplaying.composable.ExitConfirmDialog
 import com.example.lmsnowplaying.composable.PluginTipDialog
 import com.example.lmsnowplaying.network.jellyfin.JellyfinApi
 import com.example.lmsnowplaying.network.logitechmediaserver.LMS
@@ -72,6 +73,27 @@ class MainActivity : ComponentActivity() {
         return super.onKeyDown(keyCode, event)
     }
 
+    private fun exitApp() {
+        // Blocking on purpose: this is a deliberate app-exit
+        // action, and we need the standby command to actually
+        // reach the player (e.g. a Boom) before the process
+        // dies - a fire-and-forget coroutine could get killed
+        // mid-request by the exitProcess() call right after.
+        if (AppConfig.current.standbyOnExit && AppConfig.current.lmsUrl.isNotBlank()) {
+            runBlocking(Dispatchers.IO) {
+                LMS.playPause(false)
+                LMS.power(false)
+            }
+        }
+        // The player app on this device stops together with LMSNP
+        if (AppConfig.current.localPlayerStopOnExit) LocalPlayer.stop(this, AppConfig.current.localPlayerApp)
+        // Remove the task first and only then end the process: killing the
+        // process while the activity is still in the task makes Android
+        // restart the app (it then comes back with "No Player").
+        finishAndRemoveTask()
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ exitProcess(0) }, 500)
+    }
+
     @SuppressLint("CoroutineCreationDuringComposition")
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
@@ -83,24 +105,10 @@ class MainActivity : ComponentActivity() {
             this,
             object : OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
-                    // Blocking on purpose: this is a deliberate app-exit
-                    // action, and we need the standby command to actually
-                    // reach the player (e.g. a Boom) before the process
-                    // dies - a fire-and-forget coroutine could get killed
-                    // mid-request by the exitProcess() call right after.
-                    if (AppConfig.current.standbyOnExit && AppConfig.current.lmsUrl.isNotBlank()) {
-                        runBlocking(Dispatchers.IO) {
-                            LMS.playPause(false)
-                            LMS.power(false)
-                        }
-                    }
-                    // The player app on this device stops together with LMSNP
-                    if (AppConfig.current.localPlayerStopOnExit) LocalPlayer.stop(this@MainActivity, AppConfig.current.localPlayerApp)
-                    // Remove the task first and only then end the process: killing the
-                    // process while the activity is still in the task makes Android
-                    // restart the app (it then comes back with "No Player").
-                    this@MainActivity.finishAndRemoveTask()
-                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ exitProcess(0) }, 500)
+                    // Music playing: ask first (the question itself handles Back as Cancel)
+                    if (AppConfig.current.lmsUrl.isNotBlank() && LMS.playerMac != "00:00:00:00:00:00" && LMS.isPlaying) {
+                        NavState.confirmExit = true
+                    } else exitApp()
                 }
             }
         )
@@ -163,6 +171,10 @@ class MainActivity : ComponentActivity() {
                                 // until it connects (LMS.getPlayers then picks it).
                                 if (defaultMac.isNotBlank() && LMS.players.any { it.second == defaultMac }) {
                                     LMS.setPlayer(defaultName, defaultMac)
+                                } else if (defaultMac.isBlank() && AppConfig.lastPlayerMac.isNotBlank() &&
+                                    LMS.players.any { it.second == AppConfig.lastPlayerMac }) {
+                                    // No default player: the one used last
+                                    LMS.setPlayer(AppConfig.lastPlayerName, AppConfig.lastPlayerMac)
                                 }
                             }
                         }
@@ -173,7 +185,7 @@ class MainActivity : ComponentActivity() {
                         // player screen will auto-connect without any input
                         // needed - so start focus on the play button rather
                         // than the options (⋮) menu.
-                        NavState.focusPlayButtonOnStart = AppConfig.current.defaultPlayerMac.isNotBlank()
+                        NavState.focusPlayButtonOnStart = AppConfig.current.defaultPlayerMac.isNotBlank() || AppConfig.lastPlayerMac.isNotBlank()
                         NavState.startFocusDone = false
 
                         var showPluginTip by remember { mutableStateOf(false) }
@@ -195,6 +207,12 @@ class MainActivity : ComponentActivity() {
 
                         Box(modifier = Modifier.fillMaxSize()) {
                             SecondaryScreen()
+                            if (NavState.confirmExit) {
+                                ExitConfirmDialog(
+                                    onCancel = { NavState.confirmExit = false },
+                                    onExit = { NavState.confirmExit = false; exitApp() },
+                                )
+                            }
                             if (showVolumeTip) {
                                 PluginTipDialog(
                                     onDismiss = {

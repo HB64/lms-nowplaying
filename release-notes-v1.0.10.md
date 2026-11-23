@@ -13,5 +13,4 @@
 - The YouTube app has the Material icon in the Apps list.
 
 ### Tested and not tested
-- Tested: switching each of Don't Stop The Music, SugarCube, MIPster, Random Flow, Random Mix and MusicIP off and on; the MIPster settings after choosing a recipe; the YouTube icon; the focus after a mouse click (Now Playing, queue panel, Browse panel).
-- Not tested: keeping the Mix menu while Lyrion restarts, the protection against unexpected server answers, SugarCube settings that disappear with a recipe (this depends on the plugin's own menu), and the quicker return of the focus to Play/Pause.
+- Tested: switching each of Don't Stop The Music, SugarCube, MIPster, Random Flow, Random Mix and MusicIP off and on; the MIPster settings after choosing a recipe; the YouTube icon; the focus after a mouse click (Now Playing, queue panel, Browse panel); the Mix menu while Lyrion restarts (it shows "Loading" until the server answers again).

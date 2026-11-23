@@ -349,6 +349,10 @@ object LMS{
                 val cfg = com.example.lmsnowplaying.settings.AppConfig.current
                 if (cfg.defaultPlayerMac.isNotBlank() && fresh.any { it.second == cfg.defaultPlayerMac }) {
                     setPlayer(cfg.defaultPlayerName, cfg.defaultPlayerMac)
+                } else if (cfg.defaultPlayerMac.isBlank() && com.example.lmsnowplaying.settings.AppConfig.lastPlayerMac.isNotBlank() &&
+                    fresh.any { it.second == com.example.lmsnowplaying.settings.AppConfig.lastPlayerMac }) {
+                    // No default player: the one used last
+                    setPlayer(com.example.lmsnowplaying.settings.AppConfig.lastPlayerName, com.example.lmsnowplaying.settings.AppConfig.lastPlayerMac)
                 }
             }
 
@@ -378,6 +382,7 @@ object LMS{
         playerName = name
         playerNameFlow.value = name
         playerMac = mac
+        if (mac != "00:00:00:00:00:00") com.example.lmsnowplaying.settings.AppConfig.rememberPlayer(name, mac)
 
         // Put the player we're switching away from into standby, same as
         // when the app is fully exited - otherwise self-powered players
@@ -1731,8 +1736,12 @@ object LMS{
             val lmsCmd = if (cmd == "load") "play" else cmd
             val reqString = "{\"method\": \"slim.request\", \"params\": [\"$playerMac\", [\"$plugin\",\"playlist\",\"$lmsCmd\",\"item_id:$itemId\"]]}"
             val requestBody = reqString.toRequestBody("application/json".toMediaTypeOrNull())
-            lmsApi.playlistControl(requestBody)
-            true
+            val res = lmsApi.playlistControl(requestBody)
+            // Lyrion answers an HTTP error or a JSON-RPC "error" when it refuses; an empty result is normal
+            val answer = res.body()?.string().orEmpty()
+            val refused = !res.isSuccessful || (answer.isNotBlank() && JSONObject(answer).has("error"))
+            if (refused) Log.w(TAG, "favoritesControl($cmd, $plugin) item=$itemId refused: HTTP ${res.code()} ${answer.take(200)}")
+            !refused
         }
     }
 

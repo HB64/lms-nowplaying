@@ -208,6 +208,7 @@ fun SettingsScreen(
         SettingsRepository.LOCAL_PLAYER_SQUEEZELITE,
     )
     val noneLabel = stringResource(R.string.menu_local_player_none)
+    val lastUsedLabel = stringResource(R.string.default_player_last_used)
     val playerLabels = listOf(noneLabel, "SB Player", "Squeezelite")
     val notSet = stringResource(R.string.settings_not_set)
     val onLabel = stringResource(R.string.menu_standby_on)
@@ -738,7 +739,7 @@ fun SettingsScreen(
                                 items(listCount) { i ->
                                     Box(Modifier.fillMaxWidth().height(DEF_ROW_HEIGHT), contentAlignment = Alignment.CenterStart) {
                                         if (i == 0) {
-                                            SRow((if (defaultPlayerMac.isEmpty()) "●  " else "○  ") + noneLabel, null, popupIndex == 0)
+                                            SRow((if (defaultPlayerMac.isEmpty()) "●  " else "○  ") + lastUsedLabel, null, popupIndex == 0)
                                         } else {
                                             val p = defPlayers[i - 1]
                                             SRow(
@@ -862,7 +863,7 @@ fun SettingsScreen(
                                 Icons.Filled.PlayArrow, highlighted == 7, vPad = rp
                             )
                             if (hasCancel) {
-                                SRow("${stringResource(R.string.menu_default_player_prefix)}: ${defaultPlayerName.ifBlank { noneLabel }}", Icons.Filled.Check, highlighted == 8, vPad = rp)
+                                SRow("${stringResource(R.string.menu_default_player_prefix)}: ${defaultPlayerName.ifBlank { lastUsedLabel }}", Icons.Filled.Check, highlighted == 8, vPad = rp)
                                 SRow(stringResource(R.string.settings_mymusic_items), null, highlighted == 9, vPad = rp)
                                 SRow(stringResource(R.string.settings_mymusic_order), null, highlighted == 10, vPad = rp)
                                 SRow("${stringResource(R.string.settings_track_info)}: ${if (showTrackInfoLine) onLabel else offLabel}", Icons.Outlined.Info, highlighted == 11, vPad = rp)
