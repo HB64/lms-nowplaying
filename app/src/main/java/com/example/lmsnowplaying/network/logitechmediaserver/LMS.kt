@@ -1847,7 +1847,8 @@ object LMS{
                 val cmd = o.optString("cmd")
                 val name = o.optString("name")
                 if (cmd.isBlank() || name.isBlank()) null
-                else o.optInt("weight", 100) to RadioEntry(cmd, name, o.optString("type") == "xmlbrowser_search")
+                // Only a plugin's one-colour icon ("..._svg.png") is taken over; the other entries keep the app's own icons
+                else o.optInt("weight", 100) to RadioEntry(cmd, name, o.optString("type") == "xmlbrowser_search", o.optString("icon").takeIf { ic -> ic.endsWith("_svg.png") }.orEmpty())
             }
             listed.sortedWith(compareBy({ it.first }, { it.second.name.lowercase() })).map { it.second }
         }
@@ -1880,7 +1881,8 @@ object LMS{
             (0 until loop.length()).mapNotNull {
                 val o = loop.getJSONObject(it)
                 val id = o.optString("id")
-                val name = o.optString("name")
+                // Some plugins (Podcast) give the text as "title" instead of "name"
+                val name = o.optString("name").ifBlank { o.optString("title") }
                 val icon = o.optString("image").ifBlank { o.optString("icon") }
                 if (id.isBlank() || name.isBlank()) null
                 else FavoriteEntry(id, name, o.optInt("hasitems", 0) > 0, icon, o.optString("type") == "search", o.optInt("isaudio", 0) > 0)

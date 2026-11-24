@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.NewReleases
+import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Person
@@ -1002,6 +1004,11 @@ private fun RadioEntryRow(
     }
     when {
         entry.isSearch -> BrowseRow(entry.name, icon = SearchIcon, modifier = modifier, onClick = { onSearch(entry) })
+        // Podcast plugin: its two fixed colour pictures become one-colour icons, like Material does
+        entry.icon.endsWith("plugins/Podcast/html/images/podcastindex.png") ->
+            BrowseRow(entry.name, icon = Icons.Filled.NewReleases, modifier = modifier, onClick = { open() })
+        entry.icon.endsWith("plugins/Podcast/html/images/icon.png") ->
+            BrowseRow(entry.name, icon = Icons.Filled.RssFeed, modifier = modifier, onClick = { open() })
         entry.icon.isNotBlank() -> ThumbRow(
             text = entry.name,
             imageUrl = radioImageUrl(entry.icon),
@@ -2441,6 +2448,7 @@ private val materialAppSvg = mapOf(
     "tidal" to "material/html/images/tidal.svg",
     "squeezecloud" to "material/html/images/soundcloud.svg",
     "youtube" to "material/html/images/youtube.svg",
+    "podcasts" to "material/html/images/podcast.svg",
 )
 
 // Address of a picture the server gives for a radio item (relative to the server, or already absolute).
