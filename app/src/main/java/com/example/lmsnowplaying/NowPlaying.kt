@@ -514,7 +514,7 @@ fun PlayerScreen(){
                 .fillMaxWidth()
                 .padding(horizontal = 80.dp)) {
                 Box(contentAlignment = Alignment.Center, modifier = Modifier
-                    .size(240.dp)
+                    .size((240 + 20 * AppConfig.current.npCoverStep).dp)
                     .clip(RoundedCornerShape(16.dp))
                     .background(Color.Black)){
                     GetAlbumArt(albumArtUrl, onColor = { accentColor = it })
@@ -592,9 +592,10 @@ fun PlayerScreen(){
 
                     Text(
                         buildAnnotatedString {
-                            withStyle(SpanStyle(color = mutedWhite)) { append("$byLabel ") }
+                            if (AppConfig.current.showByFrom) withStyle(SpanStyle(color = mutedWhite)) { append("$byLabel ") }
                             withStyle(SpanStyle(color = Color.White)) { append(artistName) }
                         },
+                        fontSize = (14 + 2 * AppConfig.current.npTextStep).sp,
                         maxLines = 1,
                         textAlign = TextAlign.Center,
                         modifier = Modifier
@@ -606,11 +607,12 @@ fun PlayerScreen(){
                         Spacer(modifier = Modifier.size(4.dp))
                         Text(
                             buildAnnotatedString {
-                                withStyle(SpanStyle(color = mutedWhite)) { append("$fromLabel ") }
+                                if (AppConfig.current.showByFrom) withStyle(SpanStyle(color = mutedWhite)) { append("$fromLabel ") }
                                 withStyle(SpanStyle(color = Color.White)) {
                                     append(if (albumYear.isNotBlank() && albumYear != "0") "$albumName ($albumYear)" else albumName)
                                 }
                             },
+                            fontSize = (14 + 2 * AppConfig.current.npTextStep).sp,
                             maxLines = 1,
                             textAlign = TextAlign.Center,
                             modifier = Modifier

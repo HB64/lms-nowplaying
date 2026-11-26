@@ -32,9 +32,17 @@
     <string name="default_player_info">OK kiest de standaardspeler. D-pad rechts toont of verbergt een speler in het ⋮-menu (☑ = zichtbaar); verborgen spelers blijven actief, ze staan alleen niet in de lijst. “Alleen standaardspeler bedienen” beperkt de app tot de standaardspeler.</string>
     <string name="settings_track_info_button">Trackinfo-knop</string>
     <string name="settings_track_info">Trackinfo</string>
-    <string name="settings_mymusic_order">Mijn Muziek-volgorde</string>
+    <string name="settings_by_from">“door” en “van”</string>
+    <string name="settings_np_view">Now playing-instellingen</string>
+    <string name="settings_player">Spelerinstellingen</string>
+    <string name="settings_np_text_size">Tekstgrootte</string>
+    <string name="settings_np_cover_size">Grootte hoes</string>
+    <string name="np_size_normal">Normaal</string>
+    <string name="np_sample_title">Titel van het nummer</string>
+    <string name="np_sample_artist">Naam artiest</string>
+    <string name="np_sample_album">Naam album</string>
     <string name="settings_about">Over</string>
-    <string name="settings_mymusic_order_hint">OK: oppakken / neerzetten  ·  Omhoog / Omlaag: verplaatsen</string>
+    <string name="settings_mymusic_order_hint">OK: oppakken / neerzetten  ·  Omhoog / Omlaag: verplaatsen  ·  Rechts: tonen / verbergen</string>
     <string name="settings_mymusic_items">Mijn Muziek-items</string>
     <string name="menu_standby_prefix">Stand-by bij afsluiten</string>
     <string name="menu_standby_on">Aan</string>
@@ -127,6 +135,7 @@
     <string name="browse_favorites">Favorieten</string>
     <string name="browse_favorite">Favoriet</string>
     <string name="mix_info">Van alle mix-plugins kunnen de instellingen per speler in Lyrion zelf gewijzigd worden.</string>
+    <string name="mix_recipe_info">Style en Variety zijn verborgen zolang een recipe is gekozen (MIPster, SugarCube). Kies geen recipe om ze weer te tonen.</string>
     <string name="info_tracks_one">%1$d Nummer \u2022 %2$s</string>
     <string name="info_tracks_many">%1$d Nummers \u2022 %2$s</string>
     <string name="info_play_album">Hele album afspelen</string>

@@ -32,9 +32,17 @@
     <string name="default_player_info">OK picks the default player. D-pad right shows or hides a player in the ⋮ menu (☑ = shown); hidden players stay active, they are just not listed. “Only control default” limits the app to the default player.</string>
     <string name="settings_track_info_button">Track info button</string>
     <string name="settings_track_info">Track info</string>
-    <string name="settings_mymusic_order">My Music order</string>
+    <string name="settings_by_from">“by” and “from”</string>
+    <string name="settings_np_view">Now playing settings</string>
+    <string name="settings_player">Player settings</string>
+    <string name="settings_np_text_size">Text size</string>
+    <string name="settings_np_cover_size">Cover size</string>
+    <string name="np_size_normal">Normal</string>
+    <string name="np_sample_title">Song title</string>
+    <string name="np_sample_artist">Artist name</string>
+    <string name="np_sample_album">Album name</string>
     <string name="settings_about">About</string>
-    <string name="settings_mymusic_order_hint">OK: pick up / put down  ·  Up / Down: move</string>
+    <string name="settings_mymusic_order_hint">OK: pick up / put down  ·  Up / Down: move  ·  Right: show / hide</string>
     <string name="settings_mymusic_items">My Music items</string>
     <string name="menu_standby_prefix">Standby on exit</string>
     <string name="menu_standby_on">On</string>
@@ -127,6 +135,7 @@
     <string name="browse_favorites">Favorites</string>
     <string name="browse_favorite">Favorite</string>
     <string name="mix_info">The settings of all mix plugins can be changed per player in Lyrion itself.</string>
+    <string name="mix_recipe_info">Style and Variety are hidden while a recipe is selected (MIPster, SugarCube). Choose no recipe to show them again.</string>
     <string name="info_tracks_one">%1$d Track \u2022 %2$s</string>
     <string name="info_tracks_many">%1$d Tracks \u2022 %2$s</string>
     <string name="info_play_album">Play whole album</string>

@@ -176,10 +176,15 @@ fun BrowseScreen() {
     // Open where it was left last time
     val startSection = remember { NavState.lastBrowse }
     val restored = remember { restoreBrowse(startSection) }
-    var level by remember { mutableStateOf(restored.first) }
+    // Reopen inside a plugin's search when that was open (same plugin level as saved in radioPath)
+    val reopenRadioSearch = remember {
+        restored.first == BrowseLevel.RADIO && NavState.radioSearchItem != null && NavState.radioPath.isNotEmpty() &&
+            (NavState.radioPath.first().id == "apps") == (startSection == "APPS")
+    }
+    var level by remember { mutableStateOf(if (reopenRadioSearch) BrowseLevel.RADIO_SEARCH else restored.first) }
     // Where we came from, so Back/left retraces the actual route (also when
     // an artist/album was reached through Search instead of the artist list).
-    val stack = remember { mutableStateListOf<BrowseLevel>().apply { addAll(restored.second) } }
+    val stack = remember { mutableStateListOf<BrowseLevel>().apply { addAll(restored.second); if (reopenRadioSearch) add(BrowseLevel.RADIO) } }
     val go: (BrowseLevel) -> Unit = { to ->
         stack.add(level)
         level = to
@@ -281,6 +286,8 @@ fun BrowseScreen() {
             }
         }
     }
+    // The radio search being typed in: the item it belongs to ("" = the plugin itself)
+    var radioSearch by remember { mutableStateOf(if (reopenRadioSearch) NavState.radioSearchItem!! else BrowseItem("", "")) }
     // Remember where we are; Apps and Radio share their levels but are separate sections
     LaunchedEffect(level) {
         // Albums and tracks are reopened at the list they were reached from (New Music, Genres, ...), not at Artists
@@ -288,6 +295,8 @@ fun BrowseScreen() {
             stack.lastOrNull { it in albumOrigins } else null
         val section = if (origin != null) browseSection(origin) else browseSection(level)
         NavState.lastBrowse = if (section == "RADIO" && radioPath.firstOrNull()?.id == "apps") "APPS" else section
+        val inSearch = level == BrowseLevel.RADIO_SEARCH || (level == BrowseLevel.RADIO_ACTIONS && stack.lastOrNull() == BrowseLevel.RADIO_SEARCH)
+        NavState.radioSearchItem = if (inSearch) radioSearch else null
     }
     var radioCmd by remember { mutableStateOf(if (savedRadio != null) NavState.radioCmd else "") }
     LaunchedEffect(radioPath.size, radioPath.firstOrNull()?.id, radioPath.lastOrNull()?.id, radioCmd) {
@@ -295,11 +304,9 @@ fun BrowseScreen() {
         NavState.radioCmd = radioCmd
     }
     var actionRadio by remember { mutableStateOf<BrowseItem?>(null) }
-    // The radio search being typed in: the item it belongs to ("" = the plugin itself)
-    var radioSearch by remember { mutableStateOf(BrowseItem("", "")) }
 
     // Search
-    var query by remember { mutableStateOf("") }
+    var query by remember { mutableStateOf(if (startSection == "SEARCH") NavState.searchTerm else "") }
     var results by remember { mutableStateOf<SearchResults?>(null) }
     var searching by remember { mutableStateOf(false) }
     var lastTerm by remember { mutableStateOf("") }
@@ -571,6 +578,7 @@ fun BrowseScreen() {
                     onSearch = { cmd, item ->
                         radioCmd = cmd
                         radioSearch = item
+                        NavState.radioSearchTerm = ""
                         go(BrowseLevel.RADIO_SEARCH)
                     },
                     onFolder = { radioPath.add(it) },
@@ -582,6 +590,8 @@ fun BrowseScreen() {
                 BrowseLevel.RADIO_SEARCH -> RadioSearch(
                     cmd = radioCmd,
                     itemId = radioSearch.id,
+                    initialQuery = NavState.radioSearchTerm,
+                    onQueryChange = { NavState.radioSearchTerm = it },
                     onFolder = {
                         radioPath.add(it)
                         go(BrowseLevel.RADIO)
@@ -756,6 +766,7 @@ fun BrowseScreen() {
                     query = query,
                     onQueryChange = {
                         query = it
+                        NavState.searchTerm = it
                         NavState.lastTyped = System.currentTimeMillis()
                     },
                     results = results,
@@ -790,14 +801,19 @@ private fun RootList(
     onApps: () -> Unit,
     onMix: () -> Unit,
 ) {
+    // Back from a part returns to the row it was opened from
+    val startIndex = remember { (NavState.listFocus["ROOT"] ?: 0).coerceIn(0, 3) }
     val firstFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { firstFocus.requestFocus() }
+    val rowModifier: (Int) -> Modifier = { i ->
+        (if (i == startIndex) Modifier.focusRequester(firstFocus) else Modifier).trackFocus("ROOT", i)
+    }
 
     Column {
-        BrowseRow(stringResource(R.string.browse_my_music), onClick = onMyMusic, modifier = Modifier.focusRequester(firstFocus), icon = MyMusicIcon)
-        BrowseRow(stringResource(R.string.browse_radio), onClick = onRadio, icon = RadioMenuIcon)
-        BrowseRow(stringResource(R.string.browse_apps), onClick = onApps, icon = Icons.Outlined.Apps)
-        BrowseRow(stringResource(R.string.browse_mix), onClick = onMix, icon = MixMenuIcon)
+        BrowseRow(stringResource(R.string.browse_my_music), onClick = onMyMusic, modifier = rowModifier(0), icon = MyMusicIcon)
+        BrowseRow(stringResource(R.string.browse_radio), onClick = onRadio, modifier = rowModifier(1), icon = RadioMenuIcon)
+        BrowseRow(stringResource(R.string.browse_apps), onClick = onApps, modifier = rowModifier(2), icon = Icons.Outlined.Apps)
+        BrowseRow(stringResource(R.string.browse_mix), onClick = onMix, modifier = rowModifier(3), icon = MixMenuIcon)
     }
 }
 
@@ -1027,10 +1043,12 @@ private fun RadioEntryRow(
 private fun RadioSearch(
     cmd: String,
     itemId: String,
+    initialQuery: String,
+    onQueryChange: (String) -> Unit,
     onFolder: (BrowseItem) -> Unit,
     onItem: (BrowseItem) -> Unit,
 ) {
-    var query by remember { mutableStateOf("") }
+    var query by remember { mutableStateOf(initialQuery) }
     var lastTerm by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<List<FavoriteEntry>?>(null) }
     var searching by remember { mutableStateOf(false) }
@@ -1078,6 +1096,7 @@ private fun RadioSearch(
                 value = query,
                 onValueChange = {
                     query = it
+                    onQueryChange(it)
                     NavState.lastTyped = System.currentTimeMillis()
                 },
                 singleLine = true,
@@ -1141,10 +1160,17 @@ private fun FavoritesList(
 
     val context = LocalContext.current.applicationContext
     val scope = rememberCoroutineScope()
+    // Not rememberCoroutineScope: leaving this list would cancel the request half way
     val runFolder: (String, String) -> Unit = { cmd, message ->
-        scope.launch {
+        CoroutineScope(SupervisorJob() + Dispatchers.Main).launch {
             val ok = withContext(Dispatchers.IO) { LMS.favoritesControl(cmd, folder.id) }
-            Toast.makeText(context, if (ok) message else context.getString(R.string.common_no_player), Toast.LENGTH_SHORT).show()
+            // A failed request is no player, or a server that did not answer in time (the folder may still start)
+            val text = when {
+                ok -> message
+                LMS.playerMac == "00:00:00:00:00:00" -> context.getString(R.string.common_no_player)
+                else -> context.getString(R.string.common_no_answer)
+            }
+            Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
             // Playing now: back to Now Playing (Browse reopens where it was left)
             if (ok && cmd == "load") NavState.showBrowse = false
         }
@@ -2006,14 +2032,47 @@ private fun MixPanel(onMusicIp: () -> Unit) {
             } else {
                 // A choice from a list (Filter, Mix Mode): a drop-down; the
                 // command is sent once, when a choice is picked
-                ChoiceRow(setting, if (index == 0) firstFocus else null) { next ->
-                    val cmd = setting.commands[next]
-                    set(get().toMutableList().also { list ->
-                        list.getOrNull(index)?.let { list[index] = it.copy(selected = next) }
-                    })
-                    scope.launch(Dispatchers.IO) {
-                        LMS.runPluginCommand(cmd)
-                        onPicked(cmd)
+                // With a recipe selected the plugin hides Style and Variety: an info button explains that
+                val recipeActive = setting.text.contains("recipe", ignoreCase = true) &&
+                    setting.choices.getOrNull(setting.selected)?.trim()?.trim('(', ')')?.trim()
+                        ?.let { it.isNotEmpty() && !it.equals("none", ignoreCase = true) } == true
+                var recipeInfo by remember { mutableStateOf(false) }
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(modifier = Modifier.weight(1f)) {
+                            ChoiceRow(setting, if (index == 0) firstFocus else null) { next ->
+                                val cmd = setting.commands[next]
+                                set(get().toMutableList().also { list ->
+                                    list.getOrNull(index)?.let { list[index] = it.copy(selected = next) }
+                                })
+                                scope.launch(Dispatchers.IO) {
+                                    LMS.runPluginCommand(cmd)
+                                    onPicked(cmd)
+                                }
+                            }
+                        }
+                        if (recipeActive) {
+                            FocusIconButton(
+                                onClick = { recipeInfo = !recipeInfo },
+                                size = 28.dp,
+                                modifier = Modifier.padding(start = 6.dp, end = 8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Info,
+                                    contentDescription = "Info",
+                                    tint = Color.White.copy(alpha = 0.8f),
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                        }
+                    }
+                    if (recipeActive && recipeInfo) {
+                        Text(
+                            stringResource(R.string.mix_recipe_info),
+                            color = Color.White.copy(alpha = 0.75f),
+                            fontSize = 13.sp,
+                            modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 8.dp)
+                        )
                     }
                 }
             }

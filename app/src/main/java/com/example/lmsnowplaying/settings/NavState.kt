@@ -51,12 +51,18 @@ object NavState {
     // (kept while the app runs).
     var lastBrowse = ""
 
+    // The library search term, searched again when Browse reopens at Search (kept while the app runs).
+    var searchTerm = ""
+
     // True while the "Exit LMSNP?" question is showing (Back on Now Playing while music plays).
     var confirmExit by mutableStateOf(false)
 
     // The levels opened inside Radio or Apps and the plugin's command, so Browse reopens there (kept while the app runs).
     var radioPath: List<com.example.lmsnowplaying.network.logitechmediaserver.BrowseItem> = emptyList()
     var radioCmd = ""
+    // The search inside a radio/app plugin that was open (item it belongs to, term), so Browse reopens there (kept while the app runs).
+    var radioSearchItem: com.example.lmsnowplaying.network.logitechmediaserver.BrowseItem? = null
+    var radioSearchTerm = ""
 
     // The row last focused in each browse list (key = list name), so a list
     // opens on that row again after the panel was closed.

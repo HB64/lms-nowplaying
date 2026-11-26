@@ -72,6 +72,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -148,6 +149,9 @@ fun SettingsScreen(
     var localPlayerStopOnExit by remember { mutableStateOf(initial.localPlayerStopOnExit) }
     var showVolumeSlider by remember { mutableStateOf(initial.showVolumeSlider) }
     var showTrackInfoLine by remember { mutableStateOf(initial.showTrackInfoLine) }
+    var showByFrom by remember { mutableStateOf(initial.showByFrom) }
+    var npTextStep by remember { mutableStateOf(initial.npTextStep) }
+    var npCoverStep by remember { mutableStateOf(initial.npCoverStep) }
     var localPlayerDeviceVolume by remember { mutableStateOf(initial.localPlayerDeviceVolume) }
     var localPlayerFixedVolume by remember { mutableStateOf(initial.localPlayerFixedVolume) }
     // Is this device's Squeezelite connected to Lyrion right now?
@@ -171,11 +175,13 @@ fun SettingsScreen(
     val aboutLines = remember { loadAboutLines(context) }
     val aboutState = rememberLazyListState()
 
-    // "list", "lms" or "jellyfin"; popup is "", "bg", "motion", "vol", "mymorder" or "player".
+    // "list", "lms" or "jellyfin"; popup is "", "bg", "motion", "vol", "mymusic" or "player".
     var screen by remember { mutableStateOf("list") }
     var popup by remember { mutableStateOf("") }
     var highlighted by remember { mutableStateOf(0) }
     var popupIndex by remember { mutableStateOf(0) }
+    // Row of the Player settings page to return to when a list opened from it closes (-1: none).
+    var playerSetReturn by remember { mutableStateOf(-1) }
     // Default-player menu: -1 = the ⓘ button next to the title; the text shows after OK on it.
     var defInfoShown by remember { mutableStateOf(false) }
 
@@ -217,15 +223,12 @@ fun SettingsScreen(
     // Opened from the ⋮ menu: every change is saved at once, no Save row.
     // First start (no settings yet): "Save and start".
     val hasCancel = onCancel != null
-    val saveRow = 8
-    // Row 3: movement of the moving backgrounds.
-    // Row 8: Default player (from the ⋮ menu) or Save and start (first start).
-    // Row 9 (only from the ⋮ menu): which items My Music shows.
-    // Row 10 (only from the ⋮ menu): the order of the My Music items.
-    // Row 11 (only from the ⋮ menu): the track info button on/off.
-    // Row 12 (only from the ⋮ menu): Synchronize… (couple players / sync settings of the selected player).
-    // Row 13 (only from the ⋮ menu): About (version and release notes).
-    val rowCount = if (hasCancel) 14 else 9
+    val saveRow = 5
+    // Row 2: Now Playing settings (background, movement, by/from, text size, cover size, track info, volume step, seek step).
+    // Row 4: Player settings (Local player, Default player, Synchronize…).
+    // Row 5: My Music items and order (from the ⋮ menu) or Save and start (first start).
+    // Row 6 (only from the ⋮ menu): About (version and release notes).
+    val rowCount = if (hasCancel) 7 else 6
     val rp = if (hasCancel) 6.dp else 10.dp
     val playerOk: () -> Boolean = { LMS.playerMac.isNotBlank() && LMS.playerMac != "00:00:00:00:00:00" }
     val syncChange: (String, Int) -> Unit = { name, v ->
@@ -267,6 +270,9 @@ fun SettingsScreen(
             localPlayerAutoStart = localPlayerAutoStart && localPlayerApp != SettingsRepository.LOCAL_PLAYER_NONE,
             showVolumeSlider = showVolumeSlider,
             showTrackInfoLine = showTrackInfoLine,
+            showByFrom = showByFrom,
+            npTextStep = npTextStep,
+            npCoverStep = npCoverStep,
             localPlayerDeviceVolume = localPlayerDeviceVolume && localPlayerApp != SettingsRepository.LOCAL_PLAYER_NONE,
             localPlayerFixedVolume = localPlayerFixedVolume,
         )
@@ -378,7 +384,14 @@ fun SettingsScreen(
     BackHandler(enabled = popup.isNotEmpty() || screen != "list") {
         if (popup == "syncpick") { popup = "syncmenu"; popupIndex = 0 }
         else if (popup == "syncset") { popup = "syncmenu"; popupIndex = 1 }
+        else if (popup == "bg") { popup = "npview"; popupIndex = 0 }
+        else if (popup == "motion") { popup = "npview"; popupIndex = 1 }
+        else if (popup == "vol") { popup = "npview"; popupIndex = 6 }
+        else if (popup == "seek") { popup = "npview"; popupIndex = 7 }
         else if (popup.isNotEmpty()) popup = "" else { commitServers(); screen = "list" }
+    }
+    LaunchedEffect(popup) {
+        if (popup.isEmpty() && playerSetReturn >= 0) { popupIndex = playerSetReturn; playerSetReturn = -1; popup = "playerset" }
     }
 
     // Keep the highlighted row of the default-player list in view.
@@ -466,8 +479,10 @@ fun SettingsScreen(
                                     "vol" -> volValues.size
                                     "seek" -> seekValues.size
                                     "defplayer" -> defPlayers.size + 2
-                                    "mymusic", "mymorder" -> myMusicIds.size
+                                    "mymusic" -> myMusicIds.size
                                     "syncmenu" -> 2
+                                    "npview" -> 8
+                                    "playerset" -> if (hasCancel) 3 else 1
                                     "syncpick" -> syncCands.size.coerceAtLeast(1)
                                     "syncset" -> LMS.syncPrefNames.size
                                     "about" -> aboutLines.size.coerceAtLeast(1)
@@ -480,7 +495,7 @@ fun SettingsScreen(
                                     popup == "defplayer" && event.key == Key.DirectionUp ->
                                         popupIndex = if (popupIndex == 0) -1 else if (popupIndex == -1) count - 1 else popupIndex - 1
                                     // Order popup with an item picked up: Up / Down move it
-                                    popup == "mymorder" && orderGrab && (event.key == Key.DirectionDown || event.key == Key.DirectionUp) -> {
+                                    popup == "mymusic" && orderGrab && (event.key == Key.DirectionDown || event.key == Key.DirectionUp) -> {
                                         val list = orderedIds().toMutableList()
                                         val to = popupIndex + if (event.key == Key.DirectionDown) 1 else -1
                                         if (to in list.indices) {
@@ -496,6 +511,12 @@ fun SettingsScreen(
                                     event.key == Key.DirectionLeft && popup == "about" -> popup = ""
                                     event.key == Key.DirectionDown -> popupIndex = (popupIndex + 1) % count
                                     event.key == Key.DirectionUp -> popupIndex = (popupIndex - 1 + count) % count
+                                    // My Music list: D-pad right shows/hides the item (OK picks it up to move it)
+                                    event.key == Key.DirectionRight && popup == "mymusic" -> {
+                                        val id = orderedIds()[popupIndex]
+                                        hiddenMyMusic = if (id in hiddenMyMusic) hiddenMyMusic - id else hiddenMyMusic + id
+                                        persist()
+                                    }
                                     // Default-player list: D-pad right shows/hides that player in the ⋮ menu.
                                     event.key == Key.DirectionRight && popup == "defplayer" && popupIndex in 1..defPlayers.size -> {
                                         val mac = defPlayers[popupIndex - 1].second
@@ -519,18 +540,42 @@ fun SettingsScreen(
                                     }
                                     event.key == Key.DirectionLeft && popup == "syncpick" -> { popup = "syncmenu"; popupIndex = 0 }
                                     event.key == Key.DirectionLeft && popup == "syncmenu" -> popup = ""
+                                    popup == "npview" && popupIndex == 3 && event.key == Key.DirectionRight -> { npTextStep = (npTextStep + 1).coerceAtMost(8); persist() }
+                                    popup == "npview" && popupIndex == 3 && event.key == Key.DirectionLeft -> { npTextStep = (npTextStep - 1).coerceAtLeast(0); persist() }
+                                    popup == "npview" && popupIndex == 4 && event.key == Key.DirectionRight -> { npCoverStep = (npCoverStep + 1).coerceAtMost(5); persist() }
+                                    popup == "npview" && popupIndex == 4 && event.key == Key.DirectionLeft -> { npCoverStep = (npCoverStep - 1).coerceAtLeast(0); persist() }
+                                    event.key == Key.DirectionLeft && popup == "npview" -> popup = ""
+                                    event.key == Key.DirectionLeft && popup == "playerset" -> popup = ""
+                                    event.key == Key.DirectionLeft && popup == "bg" -> { popup = "npview"; popupIndex = 0 }
+                                    event.key == Key.DirectionLeft && popup == "motion" -> { popup = "npview"; popupIndex = 1 }
+                                    event.key == Key.DirectionLeft && popup == "vol" -> { popup = "npview"; popupIndex = 6 }
+                                    event.key == Key.DirectionLeft && popup == "seek" -> { popup = "npview"; popupIndex = 7 }
                                     isOk -> when (popup) {
-                                        "bg" -> { backgroundStyle = bgValues[popupIndex]; popup = ""; persist() }
-                                        "motion" -> { backgroundMotion = popupIndex; popup = ""; persist() }
-                                        "vol" -> { volumeStep = volValues[popupIndex]; popup = ""; persist() }
-                                        "seek" -> { seekStep = seekValues[popupIndex]; popup = ""; persist() }
-                                        "mymusic" -> {
-                                            val id = myMusicIds[popupIndex]
-                                            hiddenMyMusic = if (id in hiddenMyMusic) hiddenMyMusic - id else hiddenMyMusic + id
-                                            persist()
-                                        }
-                                        "mymorder" -> orderGrab = !orderGrab
+                                        "bg" -> { backgroundStyle = bgValues[popupIndex]; popup = "npview"; popupIndex = 0; persist() }
+                                        "motion" -> { backgroundMotion = popupIndex; popup = "npview"; popupIndex = 1; persist() }
+                                        "vol" -> { volumeStep = volValues[popupIndex]; popup = "npview"; popupIndex = 6; persist() }
+                                        "seek" -> { seekStep = seekValues[popupIndex]; popup = "npview"; popupIndex = 7; persist() }
+                                        "mymusic" -> orderGrab = !orderGrab
                                         "about" -> popup = ""
+                                        "playerset" -> when (popupIndex) {
+                                            0 -> { playerSetReturn = 0; popupIndex = playerApps.indexOf(localPlayerApp).coerceAtLeast(0); popup = "player" }
+                                            1 -> if (AppConfig.current.lmsUrl.isNotBlank()) {
+                                                playerSetReturn = 1
+                                                defPlayers = LMS.players.toList()
+                                                popupIndex = defPlayers.indexOfFirst { it.second == defaultPlayerMac } + 1
+                                                defInfoShown = false
+                                                popup = "defplayer"
+                                            }
+                                            2 -> if (playerOk()) { playerSetReturn = 2; popupIndex = 0; popup = "syncmenu" }
+                                        }
+                                        "npview" -> when (popupIndex) {
+                                            0 -> { popupIndex = bgValues.indexOf(backgroundStyle).coerceAtLeast(0); popup = "bg" }
+                                            1 -> { popupIndex = backgroundMotion.coerceIn(0, 2); popup = "motion" }
+                                            2 -> { showByFrom = !showByFrom; persist() }
+                                            5 -> { showTrackInfoLine = !showTrackInfoLine; persist() }
+                                            6 -> { popupIndex = volValues.indexOf(volumeStep).coerceAtLeast(0); popup = "vol" }
+                                            7 -> { popupIndex = seekValues.indexOf(seekStep).coerceAtLeast(0); popup = "seek" }
+                                        }
                                         "defplayer" -> {
                                             if (popupIndex == -1) {
                                                 defInfoShown = !defInfoShown
@@ -594,29 +639,11 @@ fun SettingsScreen(
                                 isOk -> when (highlighted) {
                                     0 -> screen = "lms"
                                     1 -> screen = "jellyfin"
-                                    2 -> { popupIndex = bgValues.indexOf(backgroundStyle).coerceAtLeast(0); popup = "bg" }
-                                    3 -> { popupIndex = backgroundMotion.coerceIn(0, 2); popup = "motion" }
-                                    4 -> { standbyOnExit = !standbyOnExit; persist() }
-                                    5 -> { popupIndex = volValues.indexOf(volumeStep).coerceAtLeast(0); popup = "vol" }
-                                    6 -> { popupIndex = seekValues.indexOf(seekStep).coerceAtLeast(0); popup = "seek" }
-                                    7 -> {
-                                        popupIndex = playerApps.indexOf(localPlayerApp).coerceAtLeast(0)
-                                        popup = "player"
-                                    }
-                                    8 -> if (!hasCancel) doSave() else if (AppConfig.current.lmsUrl.isNotBlank()) {
-                                        defPlayers = LMS.players.toList()
-                                        popupIndex = defPlayers.indexOfFirst { it.second == defaultPlayerMac } + 1
-                                        defInfoShown = false
-                                        popup = "defplayer"
-                                    }
-                                    9 -> if (hasCancel) { popupIndex = 0; popup = "mymusic" }
-                                    10 -> if (hasCancel) { orderGrab = false; popupIndex = 0; popup = "mymorder" }
-                                    11 -> if (hasCancel) {
-                                        showTrackInfoLine = !showTrackInfoLine
-                                        persist()
-                                    }
-                                    12 -> if (hasCancel && playerOk()) { popupIndex = 0; popup = "syncmenu" }
-                                    13 -> if (hasCancel) { popupIndex = 0; popup = "about" }
+                                    2 -> { popupIndex = 0; popup = "npview" }
+                                    3 -> { standbyOnExit = !standbyOnExit; persist() }
+                                    4 -> { popupIndex = 0; popup = "playerset" }
+                                    5 -> if (!hasCancel) doSave() else { orderGrab = false; popupIndex = 0; popup = "mymusic" }
+                                    6 -> if (hasCancel) { popupIndex = 0; popup = "about" }
                                 }
                                 else -> return@onKeyEvent false
                             }
@@ -650,15 +677,33 @@ fun SettingsScreen(
                         }
                         "mymusic" -> {
                             SRow(stringResource(R.string.settings_mymusic_items), null, false, bold = true)
-                            myMusicIds.forEachIndexed { i, id ->
-                                SRow((if (id in hiddenMyMusic) "☐  " else "☑  ") + myMusicLabels[i], null, popupIndex == i)
-                            }
-                        }
-                        "mymorder" -> {
-                            SRow(stringResource(R.string.settings_mymusic_order), null, false, bold = true)
                             SRow(stringResource(R.string.settings_mymusic_order_hint), null, false, dim = true)
                             orderedIds().forEachIndexed { i, id ->
-                                SRow((if (orderGrab && popupIndex == i) "⇅  " else "") + myMusicLabels[myMusicIds.indexOf(id)], null, popupIndex == i)
+                                SRow((if (orderGrab && popupIndex == i) "⇅  " else "") + (if (id in hiddenMyMusic) "☐  " else "☑  ") + myMusicLabels[myMusicIds.indexOf(id)], null, popupIndex == i)
+                            }
+                        }
+                        "npview" -> {
+                            SRow(stringResource(R.string.settings_np_view), null, false, bold = true)
+                            NowPlayingTextPreview(showByFrom, npTextStep)
+                            SRow("${stringResource(R.string.menu_background_prefix)}: ${bgLabels[bgValues.indexOf(backgroundStyle).coerceAtLeast(0)]}", BackgroundMenuIcon, popupIndex == 0)
+                            SRow("${stringResource(R.string.menu_background_motion_prefix)}: ${motionLabels[backgroundMotion.coerceIn(0, 2)]}", BackgroundMenuIcon, popupIndex == 1, dim = backgroundStyle != SettingsRepository.BACKGROUND_STYLE_ALBUM_DRIFT && backgroundStyle != SettingsRepository.BACKGROUND_STYLE_ALBUM_LAVA)
+                            SRow((if (showByFrom) "☑  " else "☐  ") + stringResource(R.string.settings_by_from), null, popupIndex == 2)
+                            SRow("${stringResource(R.string.settings_np_text_size)}:  ◀  ${if (npTextStep == 0) stringResource(R.string.np_size_normal) else "+$npTextStep"}  ▶", null, popupIndex == 3)
+                            SRow("${stringResource(R.string.settings_np_cover_size)}:  ◀  ${if (npCoverStep == 0) stringResource(R.string.np_size_normal) else "+$npCoverStep"}  ▶", null, popupIndex == 4)
+                            SRow("${stringResource(R.string.settings_track_info)}: ${if (showTrackInfoLine) onLabel else offLabel}", null, popupIndex == 5)
+                            SRow("${stringResource(R.string.menu_volume_step_prefix)}: $volumeStep%", VolumeIcon, popupIndex == 6)
+                            SRow("${stringResource(R.string.menu_seek_step_prefix)}: $seekStep s", Icons.Filled.FastForward, popupIndex == 7)
+                        }
+                        "playerset" -> {
+                            SRow(stringResource(R.string.settings_player), null, false, bold = true)
+                            SRow(
+                                "${stringResource(R.string.menu_local_player_prefix)}: ${playerLabels[playerApps.indexOf(localPlayerApp).coerceAtLeast(0)]}" +
+                                    if (localPlayerAutoStart && localPlayerApp != SettingsRepository.LOCAL_PLAYER_NONE) " (${stringResource(R.string.menu_local_player_auto)})" else "",
+                                Icons.Filled.PlayArrow, popupIndex == 0
+                            )
+                            if (hasCancel) {
+                                SRow("${stringResource(R.string.menu_default_player_prefix)}: ${defaultPlayerName.ifBlank { lastUsedLabel }}", Icons.Filled.Check, popupIndex == 1)
+                                SRow(stringResource(R.string.menu_sync), Icons.Outlined.Link, popupIndex == 2, dim = !playerOk())
                             }
                         }
                         "about" -> {
@@ -852,23 +897,12 @@ fun SettingsScreen(
                             SRow(stringResource(R.string.settings_title), SettingsMenuIcon, false, bold = true)
                             SRow("Lyrion: ${lmsUrl.ifBlank { notSet }}", ServerIcon, highlighted == 0, vPad = rp)
                             SRow("Jellyfin: ${jellyfinUrl.ifBlank { notSet }}", FilmstripIcon, highlighted == 1, vPad = rp)
-                            SRow("${stringResource(R.string.menu_background_prefix)}: ${bgLabels[bgValues.indexOf(backgroundStyle).coerceAtLeast(0)]}", BackgroundMenuIcon, highlighted == 2, vPad = rp)
-                            SRow("${stringResource(R.string.menu_background_motion_prefix)}: ${motionLabels[backgroundMotion.coerceIn(0, 2)]}", BackgroundMenuIcon, highlighted == 3, dim = backgroundStyle != SettingsRepository.BACKGROUND_STYLE_ALBUM_DRIFT && backgroundStyle != SettingsRepository.BACKGROUND_STYLE_ALBUM_LAVA, vPad = rp)
-                            SRow("${stringResource(R.string.menu_standby_prefix)}: ${if (standbyOnExit) onLabel else offLabel}", StandbyMenuIcon, highlighted == 4, vPad = rp)
-                            SRow("${stringResource(R.string.menu_volume_step_prefix)}: $volumeStep%", VolumeIcon, highlighted == 5, vPad = rp)
-                            SRow("${stringResource(R.string.menu_seek_step_prefix)}: $seekStep s", Icons.Filled.FastForward, highlighted == 6, vPad = rp)
-                            SRow(
-                                "${stringResource(R.string.menu_local_player_prefix)}: ${playerLabels[playerApps.indexOf(localPlayerApp).coerceAtLeast(0)]}" +
-                                    if (localPlayerAutoStart && localPlayerApp != SettingsRepository.LOCAL_PLAYER_NONE) " (${stringResource(R.string.menu_local_player_auto)})" else "",
-                                Icons.Filled.PlayArrow, highlighted == 7, vPad = rp
-                            )
+                            SRow(stringResource(R.string.settings_np_view), BackgroundMenuIcon, highlighted == 2, vPad = rp)
+                            SRow("${stringResource(R.string.menu_standby_prefix)}: ${if (standbyOnExit) onLabel else offLabel}", StandbyMenuIcon, highlighted == 3, vPad = rp)
+                            SRow(stringResource(R.string.settings_player), Icons.Filled.PlayArrow, highlighted == 4, vPad = rp)
                             if (hasCancel) {
-                                SRow("${stringResource(R.string.menu_default_player_prefix)}: ${defaultPlayerName.ifBlank { lastUsedLabel }}", Icons.Filled.Check, highlighted == 8, vPad = rp)
-                                SRow(stringResource(R.string.settings_mymusic_items), null, highlighted == 9, vPad = rp)
-                                SRow(stringResource(R.string.settings_mymusic_order), null, highlighted == 10, vPad = rp)
-                                SRow("${stringResource(R.string.settings_track_info)}: ${if (showTrackInfoLine) onLabel else offLabel}", Icons.Outlined.Info, highlighted == 11, vPad = rp)
-                                SRow(stringResource(R.string.menu_sync), Icons.Outlined.Link, highlighted == 12, dim = !playerOk(), vPad = rp)
-                                SRow(stringResource(R.string.settings_about), Icons.Outlined.Info, highlighted == 13, vPad = rp)
+                                SRow(stringResource(R.string.settings_mymusic_items), null, highlighted == 5, vPad = rp)
+                                SRow(stringResource(R.string.settings_about), Icons.Outlined.Info, highlighted == 6, vPad = rp)
                             } else {
                                 SRow(stringResource(R.string.settings_save_and_start), null, highlighted == saveRow, vPad = rp, bold = true)
                             }
@@ -966,6 +1000,46 @@ private fun loadAboutLines(context: android.content.Context): List<Pair<Int, Str
         }
     }
 } catch (_: Exception) { emptyList() }
+
+// Sample of the Now Playing text block (title, artist, album) as the settings show it.
+@Composable
+private fun NowPlayingTextPreview(showByFrom: Boolean, textStep: Int) {
+    val textSize = (14 + 2 * textStep).sp
+    val muted = Color.White.copy(alpha = 0.65f)
+    val byLabel = stringResource(R.string.now_playing_by_label)
+    val fromLabel = stringResource(R.string.now_playing_from_label)
+    val artist = stringResource(R.string.np_sample_artist)
+    val album = stringResource(R.string.np_sample_album)
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+            .background(Color.Black.copy(alpha = 0.5f))
+            .padding(horizontal = 12.dp, vertical = 14.dp)
+    ) {
+        Text(stringResource(R.string.np_sample_title), fontSize = 30.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1)
+        androidx.compose.foundation.layout.Spacer(Modifier.size(10.dp))
+        Text(
+            androidx.compose.ui.text.buildAnnotatedString {
+                if (showByFrom) withStyle(androidx.compose.ui.text.SpanStyle(color = muted)) { append("$byLabel ") }
+                withStyle(androidx.compose.ui.text.SpanStyle(color = Color.White)) { append(artist) }
+            },
+            fontSize = textSize,
+            maxLines = 1
+        )
+        androidx.compose.foundation.layout.Spacer(Modifier.size(4.dp))
+        Text(
+            androidx.compose.ui.text.buildAnnotatedString {
+                if (showByFrom) withStyle(androidx.compose.ui.text.SpanStyle(color = muted)) { append("$fromLabel ") }
+                withStyle(androidx.compose.ui.text.SpanStyle(color = Color.White)) { append(album) }
+            },
+            fontSize = textSize,
+            maxLines = 1
+        )
+    }
+}
 
 @Composable
 private fun SRow(

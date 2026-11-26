@@ -42,6 +42,9 @@ object SettingsRepository {
     private val LOCAL_PLAYER_AUTOSTART = booleanPreferencesKey("local_player_autostart")
     private val SHOW_VOLUME_SLIDER = booleanPreferencesKey("show_volume_slider")
     private val SHOW_TRACK_INFO_LINE = booleanPreferencesKey("show_track_info_line")
+    private val SHOW_BY_FROM = booleanPreferencesKey("show_by_from")
+    private val NP_TEXT_STEP = intPreferencesKey("np_text_step")
+    private val NP_COVER_STEP = intPreferencesKey("np_cover_step")
     private val ONLY_CONTROL_DEFAULT = booleanPreferencesKey("only_control_default")
     private val HIDDEN_PLAYERS = stringSetPreferencesKey("hidden_players")
     private val HIDDEN_MY_MUSIC = stringSetPreferencesKey("hidden_my_music")
@@ -115,6 +118,12 @@ object SettingsRepository {
         // The ⓘ button next to the title (technical info of the track); off by default.
         // One line with the main technical data under the album line; off by default.
         val showTrackInfoLine: Boolean = false,
+        // The words "by" and "from" before artist and album on Now Playing.
+        val showByFrom: Boolean = true,
+        // Artist and album text on Now Playing: 0 = normal (14 sp), each step adds 2 sp (0..8).
+        val npTextStep: Int = 0,
+        // Big cover on Now Playing: 0 = normal (240 dp), each step adds 20 dp (0..5).
+        val npCoverStep: Int = 0,
         val onlyControlDefault: Boolean = false,
         // MAC addresses of players hidden from the ⋮ menu list.
         val hiddenPlayers: Set<String> = emptySet(),
@@ -151,6 +160,9 @@ object SettingsRepository {
                 localPlayerStopOnExit = prefs[LOCAL_PLAYER_STOP_ON_EXIT] ?: false,
                 showVolumeSlider = prefs[SHOW_VOLUME_SLIDER] ?: true,
                 showTrackInfoLine = prefs[SHOW_TRACK_INFO_LINE] ?: false,
+                showByFrom = prefs[SHOW_BY_FROM] ?: true,
+                npTextStep = (prefs[NP_TEXT_STEP] ?: 0).coerceIn(0, 8),
+                npCoverStep = (prefs[NP_COVER_STEP] ?: 0).coerceIn(0, 5),
                 onlyControlDefault = prefs[ONLY_CONTROL_DEFAULT] ?: false,
                 hiddenPlayers = prefs[HIDDEN_PLAYERS] ?: emptySet(),
                 hiddenMyMusic = prefs[HIDDEN_MY_MUSIC] ?: DEFAULT_HIDDEN_MY_MUSIC,
@@ -184,6 +196,9 @@ object SettingsRepository {
             prefs[LOCAL_PLAYER_STOP_ON_EXIT] = settings.localPlayerStopOnExit
             prefs[SHOW_VOLUME_SLIDER] = settings.showVolumeSlider
             prefs[SHOW_TRACK_INFO_LINE] = settings.showTrackInfoLine
+            prefs[SHOW_BY_FROM] = settings.showByFrom
+            prefs[NP_TEXT_STEP] = settings.npTextStep
+            prefs[NP_COVER_STEP] = settings.npCoverStep
             prefs[ONLY_CONTROL_DEFAULT] = settings.onlyControlDefault
             prefs[HIDDEN_PLAYERS] = settings.hiddenPlayers
             prefs[HIDDEN_MY_MUSIC] = settings.hiddenMyMusic
