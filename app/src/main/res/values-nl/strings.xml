@@ -283,4 +283,5 @@
     <string name="exit_confirm_body">Weet je het zeker?</string>
     <string name="exit_confirm_cancel">Nee</string>
     <string name="exit_confirm_yes">Ja</string>
+    <string name="settings_power_off_on_switch">Speler uitzetten bij wisselen</string>
 </resources>

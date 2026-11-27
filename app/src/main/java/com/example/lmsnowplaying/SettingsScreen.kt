@@ -21,6 +21,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
@@ -142,6 +144,7 @@ fun SettingsScreen(
     var backgroundStyle by remember { mutableStateOf(initial.backgroundStyle) }
     var backgroundMotion by remember { mutableStateOf(initial.backgroundMotion) }
     var standbyOnExit by remember { mutableStateOf(initial.standbyOnExit) }
+    var powerOffOnSwitch by remember { mutableStateOf(initial.powerOffOnSwitch) }
     var volumeStep by remember { mutableStateOf(initial.volumeStep) }
     var seekStep by remember { mutableStateOf(initial.seekStep) }
     var localPlayerApp by remember { mutableStateOf(initial.localPlayerApp) }
@@ -263,6 +266,7 @@ fun SettingsScreen(
             backgroundStyle = backgroundStyle,
             backgroundMotion = backgroundMotion,
             standbyOnExit = standbyOnExit,
+            powerOffOnSwitch = powerOffOnSwitch,
             volumeStep = volumeStep,
             seekStep = seekStep,
             localPlayerApp = localPlayerApp,
@@ -482,7 +486,7 @@ fun SettingsScreen(
                                     "mymusic" -> myMusicIds.size
                                     "syncmenu" -> 2
                                     "npview" -> 8
-                                    "playerset" -> if (hasCancel) 3 else 1
+                                    "playerset" -> if (hasCancel) 4 else 1
                                     "syncpick" -> syncCands.size.coerceAtLeast(1)
                                     "syncset" -> LMS.syncPrefNames.size
                                     "about" -> aboutLines.size.coerceAtLeast(1)
@@ -567,6 +571,7 @@ fun SettingsScreen(
                                                 popup = "defplayer"
                                             }
                                             2 -> if (playerOk()) { playerSetReturn = 2; popupIndex = 0; popup = "syncmenu" }
+                                            3 -> { powerOffOnSwitch = !powerOffOnSwitch; persist() }
                                         }
                                         "npview" -> when (popupIndex) {
                                             0 -> { popupIndex = bgValues.indexOf(backgroundStyle).coerceAtLeast(0); popup = "bg" }
@@ -683,16 +688,46 @@ fun SettingsScreen(
                             }
                         }
                         "npview" -> {
-                            SRow(stringResource(R.string.settings_np_view), null, false, bold = true)
-                            NowPlayingTextPreview(showByFrom, npTextStep)
-                            SRow("${stringResource(R.string.menu_background_prefix)}: ${bgLabels[bgValues.indexOf(backgroundStyle).coerceAtLeast(0)]}", BackgroundMenuIcon, popupIndex == 0)
-                            SRow("${stringResource(R.string.menu_background_motion_prefix)}: ${motionLabels[backgroundMotion.coerceIn(0, 2)]}", BackgroundMenuIcon, popupIndex == 1, dim = backgroundStyle != SettingsRepository.BACKGROUND_STYLE_ALBUM_DRIFT && backgroundStyle != SettingsRepository.BACKGROUND_STYLE_ALBUM_LAVA)
-                            SRow((if (showByFrom) "☑  " else "☐  ") + stringResource(R.string.settings_by_from), null, popupIndex == 2)
-                            SRow("${stringResource(R.string.settings_np_text_size)}:  ◀  ${if (npTextStep == 0) stringResource(R.string.np_size_normal) else "+$npTextStep"}  ▶", null, popupIndex == 3)
-                            SRow("${stringResource(R.string.settings_np_cover_size)}:  ◀  ${if (npCoverStep == 0) stringResource(R.string.np_size_normal) else "+$npCoverStep"}  ▶", null, popupIndex == 4)
-                            SRow("${stringResource(R.string.settings_track_info)}: ${if (showTrackInfoLine) onLabel else offLabel}", null, popupIndex == 5)
-                            SRow("${stringResource(R.string.menu_volume_step_prefix)}: $volumeStep%", VolumeIcon, popupIndex == 6)
-                            SRow("${stringResource(R.string.menu_seek_step_prefix)}: $seekStep s", Icons.Filled.FastForward, popupIndex == 7)
+                            // Title and sample stay in view; the rows below scroll with the D-pad when they do not fit
+                            val npDensity = androidx.compose.ui.platform.LocalDensity.current
+                            val npScreenPx = with(npDensity) { androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp.roundToPx() }
+                            var npHeaderPx by remember { mutableStateOf(0) }
+                            val npRowsState = rememberLazyListState()
+                            LaunchedEffect(popupIndex) {
+                                val info = npRowsState.layoutInfo
+                                val lastIndex = info.totalItemsCount - 1
+                                val shown = info.visibleItemsInfo.firstOrNull { it.index == popupIndex }
+                                // The fade with the arrow covers the bottom of the list while more rows follow
+                                val hintPx = with(npDensity) { 36.dp.roundToPx() }
+                                if (popupIndex <= 0) npRowsState.animateScrollToItem(0)
+                                else if (popupIndex >= lastIndex) npRowsState.animateScrollToItem(lastIndex)
+                                else if (shown == null) npRowsState.animateScrollToItem(popupIndex)
+                                else {
+                                    val end = info.viewportEndOffset - (if (npRowsState.canScrollForward) hintPx else 0)
+                                    val below = shown.offset + shown.size - end
+                                    val above = info.viewportStartOffset - shown.offset
+                                    if (below > 0) npRowsState.animateScrollBy(below.toFloat())
+                                    else if (above > 0) npRowsState.animateScrollBy(-above.toFloat())
+                                }
+                            }
+                            Column(modifier = Modifier.onSizeChanged { npHeaderPx = it.height }) {
+                                SRow(stringResource(R.string.settings_np_view), null, false, bold = true)
+                                NowPlayingTextPreview(showByFrom, npTextStep)
+                            }
+                            // With a fade and an arrow at the bottom while more rows follow
+                            com.example.lmsnowplaying.composable.HintLazyColumn(
+                                state = npRowsState,
+                                modifier = Modifier.heightIn(max = with(npDensity) { (npScreenPx - npHeaderPx - 56.dp.roundToPx()).coerceAtLeast(120.dp.roundToPx()).toDp() })
+                            ) {
+                                item { SRow("${stringResource(R.string.menu_background_prefix)}: ${bgLabels[bgValues.indexOf(backgroundStyle).coerceAtLeast(0)]}", BackgroundMenuIcon, popupIndex == 0) }
+                                item { SRow("${stringResource(R.string.menu_background_motion_prefix)}: ${motionLabels[backgroundMotion.coerceIn(0, 2)]}", BackgroundMenuIcon, popupIndex == 1, dim = backgroundStyle != SettingsRepository.BACKGROUND_STYLE_ALBUM_DRIFT && backgroundStyle != SettingsRepository.BACKGROUND_STYLE_ALBUM_LAVA) }
+                                item { SRow((if (showByFrom) "☑  " else "☐  ") + stringResource(R.string.settings_by_from), null, popupIndex == 2) }
+                                item { SRow("${stringResource(R.string.settings_np_text_size)}:  ◀  ${if (npTextStep == 0) stringResource(R.string.np_size_normal) else "+$npTextStep"}  ▶", null, popupIndex == 3) }
+                                item { SRow("${stringResource(R.string.settings_np_cover_size)}:  ◀  ${if (npCoverStep == 0) stringResource(R.string.np_size_normal) else "+$npCoverStep"}  ▶", null, popupIndex == 4) }
+                                item { SRow("${stringResource(R.string.settings_track_info)}: ${if (showTrackInfoLine) onLabel else offLabel}", null, popupIndex == 5) }
+                                item { SRow("${stringResource(R.string.menu_volume_step_prefix)}: $volumeStep%", VolumeIcon, popupIndex == 6) }
+                                item { SRow("${stringResource(R.string.menu_seek_step_prefix)}: $seekStep s", Icons.Filled.FastForward, popupIndex == 7) }
+                            }
                         }
                         "playerset" -> {
                             SRow(stringResource(R.string.settings_player), null, false, bold = true)
@@ -704,6 +739,7 @@ fun SettingsScreen(
                             if (hasCancel) {
                                 SRow("${stringResource(R.string.menu_default_player_prefix)}: ${defaultPlayerName.ifBlank { lastUsedLabel }}", Icons.Filled.Check, popupIndex == 1)
                                 SRow(stringResource(R.string.menu_sync), Icons.Outlined.Link, popupIndex == 2, dim = !playerOk())
+                                SRow("${stringResource(R.string.settings_power_off_on_switch)}: ${if (powerOffOnSwitch) onLabel else offLabel}", StandbyMenuIcon, popupIndex == 3)
                             }
                         }
                         "about" -> {

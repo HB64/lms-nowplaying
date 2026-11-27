@@ -384,15 +384,16 @@ object LMS{
         playerMac = mac
         if (mac != "00:00:00:00:00:00") com.example.lmsnowplaying.settings.AppConfig.rememberPlayer(name, mac)
 
-        // Put the player we're switching away from into standby, same as
-        // when the app is fully exited - otherwise self-powered players
-        // like the Boom just keep playing in the background unnoticed.
+        // Optional (Settings, Player settings): put the player we're switching away from into
+        // standby, same as when the app is fully exited. Off by default, like Lyrion and Material:
+        // the previous player keeps playing.
         // Not between players of one sync group: pausing or powering off one member
         // would stop the whole group (Lyrion's "power on/off in group"), including
         // the player we are switching to.
-        if (previousMac != "00:00:00:00:00:00" && previousMac != mac && !inSameSyncGroup(previousMac, mac)) {
+        if (com.example.lmsnowplaying.settings.AppConfig.current.powerOffOnSwitch &&
+            previousMac != "00:00:00:00:00:00" && previousMac != mac && !inSameSyncGroup(previousMac, mac)) {
             CoroutineScope(Dispatchers.IO).launch {
-                playPauseFor(previousMac, false)
+                // Only power off: Lyrion pauses or stops by itself, as set for that player
                 powerFor(previousMac, false)
             }
         }

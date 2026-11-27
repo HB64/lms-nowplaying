@@ -574,8 +574,8 @@ fun PlayerScreen(){
                     }
                 }
                 Spacer(modifier = Modifier.size(24.dp))
-                Column(verticalArrangement = Arrangement.Center, modifier = Modifier.weight(1f)) {
-                    Spacer(modifier = Modifier.size(35.dp))
+                // The text block is centred against the cover, whatever the cover size
+                Column(verticalArrangement = Arrangement.Center, modifier = Modifier.weight(1f).height((240 + 20 * AppConfig.current.npCoverStep).dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                         Text(songName, fontSize = 30.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1,
                             textAlign = TextAlign.Center,

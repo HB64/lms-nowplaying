@@ -283,4 +283,5 @@
     <string name="exit_confirm_body">Are you sure?</string>
     <string name="exit_confirm_cancel">No</string>
     <string name="exit_confirm_yes">Yes</string>
+    <string name="settings_power_off_on_switch">Switch off player when switching</string>
 </resources>
