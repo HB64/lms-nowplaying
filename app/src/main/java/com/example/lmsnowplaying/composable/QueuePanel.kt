@@ -38,6 +38,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
@@ -102,6 +103,7 @@ fun QueuePanel() {
     var naming by remember { mutableStateOf(false) }
     var defaultName by remember { mutableStateOf("") }
     val context = LocalContext.current.applicationContext
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
 
     // Read the queue now and keep it fresh while no track is selected
     LaunchedEffect(Unit) {
@@ -228,7 +230,13 @@ fun QueuePanel() {
                         ),
                         moveFocus,
                         modifier = Modifier.padding(bottom = 4.dp).onKeyEvent { e ->
-                            if (e.type == KeyEventType.KeyDown && (e.key == Key.DirectionLeft || e.key == Key.DirectionDown)) {
+                            if (e.type == KeyEventType.KeyDown && e.key == Key.DirectionDown) {
+                                // Down: to the current track; if that fails, a plain move down
+                                try { currentFocus.requestFocus() } catch (_: Exception) {
+                                    focusManager.moveFocus(FocusDirection.Down)
+                                }
+                                true
+                            } else if (e.type == KeyEventType.KeyDown && e.key == Key.DirectionLeft) {
                                 try { currentFocus.requestFocus() } catch (_: Exception) { }
                                 true
                             } else false
@@ -329,7 +337,10 @@ fun QueuePanel() {
             } else {
                 val imageLoader = rememberLmsImageLoader()
                 HintLazyColumn(state = listState) {
-                    itemsIndexed(q.tracks) { _, track ->
+                    // The row that gets the focus: the playing (or last opened) track, else the first row
+                    val focusTarget = lastOpened ?: q.currentIndex
+                    val focusTargetShown = q.tracks.any { it.absoluteIndex == focusTarget }
+                    itemsIndexed(q.tracks) { rowIndex, track ->
                         val isCurrent = track.absoluteIndex == q.currentIndex
                         val label = if (track.artist.isNotBlank()) "${track.title} – ${track.artist}" else track.title
                         // Streams have a made-up numeric cover id with no picture behind it
@@ -346,7 +357,7 @@ fun QueuePanel() {
                             round = false,
                             imageLoader = imageLoader,
                             onClick = { lastOpened = track.absoluteIndex; selected = track },
-                            modifier = if (track.absoluteIndex == (lastOpened ?: q.currentIndex)) Modifier.focusRequester(currentFocus) else Modifier,
+                            modifier = if (track.absoluteIndex == focusTarget || (!focusTargetShown && rowIndex == 0)) Modifier.focusRequester(currentFocus) else Modifier,
                             bold = isCurrent,
                         )
                     }
