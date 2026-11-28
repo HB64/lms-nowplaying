@@ -276,6 +276,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        NavState.leavingForInstall = false
         if (firstStart) {
             firstStart = false
             return
@@ -286,6 +287,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
+        // Going to the installer is no exit: leave the players alone
+        if (NavState.leavingForInstall) return
         val app = AppConfig.current.localPlayerApp
         if (app != SettingsRepository.LOCAL_PLAYER_NONE && AppConfig.current.localPlayerStopOnExit) {
             LocalPlayer.stop(this, app)

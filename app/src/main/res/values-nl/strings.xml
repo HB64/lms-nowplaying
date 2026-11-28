@@ -289,7 +289,15 @@
     <string name="update_check_failed">Controleren op updates mislukt</string>
     <string name="update_up_to_date">Up-to-date</string>
     <string name="update_available_line">Update beschikbaar: %1$s</string>
+    <string name="update_available_ok">Update beschikbaar: %1$s  ·  OK: installeren</string>
     <string name="update_title">Update beschikbaar</string>
-    <string name="update_body">Versie %1$s is beschikbaar (je hebt %2$s).\n\n%3$s\n\nJe kunt hem downloaden via de GitHub-releasepagina.</string>
+    <string name="update_body">Versie %1$s is beschikbaar (je hebt %2$s).\n\n%3$s</string>
     <string name="update_ok">OK</string>
+    <string name="update_install">Installeren</string>
+    <string name="update_later">Later</string>
+    <string name="update_downloading">Downloaden… %1$d%%</string>
+    <string name="update_downloading_plain">Downloaden…</string>
+    <string name="update_failed">Downloaden mislukt. Controleer de verbinding en probeer het opnieuw.</string>
+    <string name="update_allow_hint">Sta LMSNP toe om apps te installeren op het scherm dat opent, druk op Terug en kies opnieuw Installeren.</string>
+    <string name="update_manual_hint">Download hem via de GitHub-releasepagina.</string>
 </resources>

@@ -51,6 +51,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -86,10 +87,12 @@ import com.example.lmsnowplaying.composable.PowerIcon
 import com.example.lmsnowplaying.composable.ServerIcon
 import com.example.lmsnowplaying.composable.SettingsMenuIcon
 import com.example.lmsnowplaying.composable.StandbyMenuIcon
+import com.example.lmsnowplaying.helpers.AppUpdater
 import com.example.lmsnowplaying.helpers.UpdateChecker
 import com.example.lmsnowplaying.composable.VolumeIcon
 import com.example.lmsnowplaying.settings.SettingsRepository
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -293,6 +296,28 @@ fun SettingsScreen(
         scope.launch {
             withContext(Dispatchers.IO) { SettingsRepository.save(context, toSave) }
             onSaved()
+        }
+    }
+
+    // About: result of the update check and the download/install that OK starts.
+    // check: 0 checking, 1 not reachable, 2 up to date, 3 newer version available
+    // phase: 0 idle, 1 downloading, 2 failed, 3 waiting for the install permission
+    var aboutCheck by remember { mutableStateOf(0) }
+    var aboutRelease by remember { mutableStateOf<UpdateChecker.Release?>(null) }
+    var aboutPhase by remember { mutableStateOf(0) }
+    var aboutPercent by remember { mutableStateOf(-1) }
+    var aboutJob by remember { mutableStateOf<Job?>(null) }
+    val startAboutInstall: (UpdateChecker.Release) -> Unit = { r ->
+        aboutJob = scope.launch {
+            aboutPhase = 1
+            aboutPercent = -1
+            val file = AppUpdater.download(context, r) { aboutPercent = it }
+            aboutPhase = when {
+                file == null -> 2
+                !AppUpdater.canInstall(context) -> if (AppUpdater.openInstallPermissionSettings(context)) 3 else 2
+                AppUpdater.install(context, file) -> 0
+                else -> 2
+            }
         }
     }
 
@@ -566,7 +591,14 @@ fun SettingsScreen(
                                         "vol" -> { volumeStep = volValues[popupIndex]; popup = "npview"; popupIndex = 6; persist() }
                                         "seek" -> { seekStep = seekValues[popupIndex]; popup = "npview"; popupIndex = 7; persist() }
                                         "mymusic" -> orderGrab = !orderGrab
-                                        "about" -> popup = ""
+                                        "about" -> {
+                                            val r = aboutRelease
+                                            if (aboutPhase == 1) {
+                                                // downloading: Back or Left cancels
+                                            } else if (aboutCheck == 3 && r != null && r.apkUrl.isNotBlank()) {
+                                                startAboutInstall(r)
+                                            } else popup = ""
+                                        }
                                         "playerset" -> when (popupIndex) {
                                             0 -> { playerSetReturn = 0; popupIndex = playerApps.indexOf(localPlayerApp).coerceAtLeast(0); popup = "player" }
                                             1 -> if (AppConfig.current.lmsUrl.isNotBlank()) {
@@ -753,23 +785,31 @@ fun SettingsScreen(
                             SRow(stringResource(R.string.settings_about), Icons.Outlined.Info, false, bold = true)
                             SRow("LMS-NowPlaying ${BuildConfig.VERSION_NAME}", null, false, dim = true)
                             // 0 checking, 1 not reachable, 2 up to date, 3 newer version available
-                            var aboutCheck by remember { mutableStateOf(0) }
-                            var aboutLatest by remember { mutableStateOf("") }
                             LaunchedEffect(Unit) {
+                                aboutCheck = 0
+                                aboutPhase = 0
                                 val r = UpdateChecker.latestRelease()
-                                if (r == null) aboutCheck = 1 else {
-                                    aboutLatest = r.version
-                                    aboutCheck = if (UpdateChecker.isNewer(r.version, BuildConfig.VERSION_NAME)) 3 else 2
+                                aboutRelease = r
+                                aboutCheck = when {
+                                    r == null -> 1
+                                    UpdateChecker.isNewer(r.version, BuildConfig.VERSION_NAME) -> 3
+                                    else -> 2
                                 }
                             }
+                            // Leaving About (any way) stops a running download
+                            DisposableEffect(Unit) { onDispose { aboutJob?.cancel() } }
                             SRow(
-                                when (aboutCheck) {
-                                    0 -> stringResource(R.string.update_checking)
-                                    1 -> stringResource(R.string.update_check_failed)
-                                    2 -> stringResource(R.string.update_up_to_date)
-                                    else -> stringResource(R.string.update_available_line, aboutLatest)
+                                when {
+                                    aboutPhase == 1 -> if (aboutPercent >= 0) stringResource(R.string.update_downloading, aboutPercent) else stringResource(R.string.update_downloading_plain)
+                                    aboutPhase == 2 -> stringResource(R.string.update_failed)
+                                    aboutPhase == 3 -> stringResource(R.string.update_allow_hint)
+                                    aboutCheck == 0 -> stringResource(R.string.update_checking)
+                                    aboutCheck == 1 -> stringResource(R.string.update_check_failed)
+                                    aboutCheck == 2 -> stringResource(R.string.update_up_to_date)
+                                    aboutRelease?.apkUrl.isNullOrBlank() -> stringResource(R.string.update_available_line, aboutRelease?.version ?: "")
+                                    else -> stringResource(R.string.update_available_ok, aboutRelease?.version ?: "")
                                 },
-                                null, false, dim = aboutCheck != 3, bold = aboutCheck == 3
+                                null, false, dim = aboutCheck != 3 && aboutPhase == 0, bold = aboutCheck == 3 || aboutPhase != 0
                             )
                             LaunchedEffect(popupIndex) { aboutState.scrollToItem(popupIndex) }
                             LazyColumn(state = aboutState, modifier = Modifier.heightIn(max = 300.dp)) {

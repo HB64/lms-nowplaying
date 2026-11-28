@@ -29,6 +29,8 @@ object NavState {
     var menuOpen by mutableStateOf(false)
     // A tip dialog is open: the screen underneath must not pull the focus away from it.
     var tipOpen by mutableStateOf(false)
+    // The app is left for the Android installer (or its permission screen): that is no exit
+    var leavingForInstall = false
 
     // When the ⋮ menu was last closed (ms). The ⋮ button can be recreated
     // right after (the screen switches layout when the artwork changes) and

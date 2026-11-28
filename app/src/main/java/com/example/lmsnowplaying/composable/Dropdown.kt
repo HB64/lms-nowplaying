@@ -291,7 +291,8 @@ fun MyUI() {
 
             LaunchedEffect(Unit) {
                 while (true) {
-                    if (!menuHasFocus) {
+                    // Not while a tip or notice is open on top: both would fight for the focus
+                    if (!menuHasFocus && !NavState.tipOpen) {
                         try { menuFocusRequester.requestFocus() } catch (_: Exception) { }
                     }
                     kotlinx.coroutines.delay(150)
