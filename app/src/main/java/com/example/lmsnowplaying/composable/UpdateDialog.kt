@@ -12,7 +12,7 @@ fun UpdateDialog(release: UpdateChecker.Release, currentVersion: String, onDismi
         onDismiss = onDismiss,
         titleText = stringResource(R.string.update_title),
         bodyText = stringResource(
-            R.string.update_body, release.version, currentVersion, UpdateChecker.notesPreview(release.notes)
+            R.string.update_body, release.version, currentVersion, UpdateChecker.notesPreview(release.notes, release.version)
         ),
         okRes = R.string.update_ok,
     )

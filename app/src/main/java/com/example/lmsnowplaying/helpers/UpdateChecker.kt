@@ -1,6 +1,7 @@
 package com.example.lmsnowplaying.helpers
 
 import android.content.Context
+import com.example.lmsnowplaying.settings.AppConfig
 import com.example.lmsnowplaying.settings.SettingsRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -25,7 +26,7 @@ object UpdateChecker {
     // Returns the new release to announce, or null (up to date, already checked
     // today, or GitHub not reachable). At most one successful check per day.
     suspend fun checkOnStart(context: Context): Release? {
-        if (checkedThisRun) return null
+        if (checkedThisRun || !AppConfig.current.checkUpdates) return null
         checkedThisRun = true
         val today = SimpleDateFormat("dd-MM-yyyy", Locale.US).format(Date())
         if (SettingsRepository.lastUpdateCheck(context) == today) return null
@@ -80,10 +81,11 @@ object UpdateChecker {
     }
 
     // Release notes as plain text for the dialog: no markdown marks, shortened.
-    fun notesPreview(body: String, max: Int = 700): String {
+    fun notesPreview(body: String, version: String, max: Int = 700): String {
         val text = body.lines()
             .map { it.trim().trimStart('#', ' ').replace("**", "").replace("`", "") }
             .filter { it.isNotBlank() }
+            .dropWhile { it.trimStart('v', 'V') == version } // the title repeats the version
             .joinToString("\n")
         return if (text.length > max) text.take(max).trimEnd() + "…" else text
     }

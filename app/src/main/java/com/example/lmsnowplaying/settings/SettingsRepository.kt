@@ -35,6 +35,7 @@ object SettingsRepository {
     private val BACKGROUND_MOTION = intPreferencesKey("background_motion")
     private val STANDBY_ON_EXIT = booleanPreferencesKey("standby_on_exit")
     private val POWER_OFF_ON_SWITCH = booleanPreferencesKey("power_off_on_switch")
+    private val CHECK_UPDATES = booleanPreferencesKey("check_updates")
     private val SMART_REPLACE_PROVIDER = stringPreferencesKey("smart_replace_provider")
     private val VOLUME_STEP = intPreferencesKey("volume_step")
     private val SEEK_STEP = intPreferencesKey("seek_step")
@@ -100,6 +101,8 @@ object SettingsRepository {
         // matching the app's original behavior.
         val standbyOnExit: Boolean = true,
         val powerOffOnSwitch: Boolean = false,
+        // Look for a new GitHub release when the app starts (once a day at most).
+        val checkUpdates: Boolean = true,
         // Which plugin the "replace next track" button prefers, since it
         // can't reliably tell on its own whether SugarCube or RandomFlow is
         // the one installed (or neither). Defaults to SugarCube, matching
@@ -155,6 +158,7 @@ object SettingsRepository {
                 backgroundMotion = prefs[BACKGROUND_MOTION] ?: 0,
                 standbyOnExit = prefs[STANDBY_ON_EXIT] ?: true,
                 powerOffOnSwitch = prefs[POWER_OFF_ON_SWITCH] ?: false,
+                checkUpdates = prefs[CHECK_UPDATES] ?: true,
                 smartReplaceProvider = prefs[SMART_REPLACE_PROVIDER] ?: SMART_REPLACE_NONE,
                 volumeStep = prefs[VOLUME_STEP] ?: 5,
                 seekStep = prefs[SEEK_STEP] ?: 10,
@@ -192,6 +196,7 @@ object SettingsRepository {
             prefs[BACKGROUND_MOTION] = settings.backgroundMotion
             prefs[STANDBY_ON_EXIT] = settings.standbyOnExit
             prefs[POWER_OFF_ON_SWITCH] = settings.powerOffOnSwitch
+            prefs[CHECK_UPDATES] = settings.checkUpdates
             prefs[SMART_REPLACE_PROVIDER] = settings.smartReplaceProvider
             prefs[VOLUME_STEP] = settings.volumeStep
             prefs[SEEK_STEP] = settings.seekStep

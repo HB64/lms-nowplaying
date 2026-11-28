@@ -41,6 +41,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -80,6 +81,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.lmsnowplaying.composable.BackgroundMenuIcon
 import com.example.lmsnowplaying.composable.FilmstripIcon
+import com.example.lmsnowplaying.composable.MyMusicIcon
+import com.example.lmsnowplaying.composable.PowerIcon
 import com.example.lmsnowplaying.composable.ServerIcon
 import com.example.lmsnowplaying.composable.SettingsMenuIcon
 import com.example.lmsnowplaying.composable.StandbyMenuIcon
@@ -145,6 +148,7 @@ fun SettingsScreen(
     var backgroundMotion by remember { mutableStateOf(initial.backgroundMotion) }
     var standbyOnExit by remember { mutableStateOf(initial.standbyOnExit) }
     var powerOffOnSwitch by remember { mutableStateOf(initial.powerOffOnSwitch) }
+    var checkUpdates by remember { mutableStateOf(initial.checkUpdates) }
     var volumeStep by remember { mutableStateOf(initial.volumeStep) }
     var seekStep by remember { mutableStateOf(initial.seekStep) }
     var localPlayerApp by remember { mutableStateOf(initial.localPlayerApp) }
@@ -226,12 +230,12 @@ fun SettingsScreen(
     // Opened from the ⋮ menu: every change is saved at once, no Save row.
     // First start (no settings yet): "Save and start".
     val hasCancel = onCancel != null
-    val saveRow = 5
+    val saveRow = 6
     // Row 2: Now Playing settings (background, movement, by/from, text size, cover size, track info, volume step, seek step).
     // Row 4: Player settings (Local player, Default player, Synchronize…).
     // Row 5: My Music items and order (from the ⋮ menu) or Save and start (first start).
     // Row 6 (only from the ⋮ menu): About (version and release notes).
-    val rowCount = if (hasCancel) 7 else 6
+    val rowCount = if (hasCancel) 8 else 7
     val rp = if (hasCancel) 6.dp else 10.dp
     val playerOk: () -> Boolean = { LMS.playerMac.isNotBlank() && LMS.playerMac != "00:00:00:00:00:00" }
     val syncChange: (String, Int) -> Unit = { name, v ->
@@ -267,6 +271,7 @@ fun SettingsScreen(
             backgroundMotion = backgroundMotion,
             standbyOnExit = standbyOnExit,
             powerOffOnSwitch = powerOffOnSwitch,
+            checkUpdates = checkUpdates,
             volumeStep = volumeStep,
             seekStep = seekStep,
             localPlayerApp = localPlayerApp,
@@ -647,8 +652,9 @@ fun SettingsScreen(
                                     2 -> { popupIndex = 0; popup = "npview" }
                                     3 -> { standbyOnExit = !standbyOnExit; persist() }
                                     4 -> { popupIndex = 0; popup = "playerset" }
-                                    5 -> if (!hasCancel) doSave() else { orderGrab = false; popupIndex = 0; popup = "mymusic" }
-                                    6 -> if (hasCancel) { popupIndex = 0; popup = "about" }
+                                    5 -> if (!hasCancel) { checkUpdates = !checkUpdates } else { orderGrab = false; popupIndex = 0; popup = "mymusic" }
+                                    6 -> if (!hasCancel) doSave() else { checkUpdates = !checkUpdates; persist() }
+                                    7 -> if (hasCancel) { popupIndex = 0; popup = "about" }
                                 }
                                 else -> return@onKeyEvent false
                             }
@@ -739,7 +745,7 @@ fun SettingsScreen(
                             if (hasCancel) {
                                 SRow("${stringResource(R.string.menu_default_player_prefix)}: ${defaultPlayerName.ifBlank { lastUsedLabel }}", Icons.Filled.Check, popupIndex == 1)
                                 SRow(stringResource(R.string.menu_sync), Icons.Outlined.Link, popupIndex == 2, dim = !playerOk())
-                                SRow("${stringResource(R.string.settings_power_off_on_switch)}: ${if (powerOffOnSwitch) onLabel else offLabel}", StandbyMenuIcon, popupIndex == 3)
+                                SRow("${stringResource(R.string.settings_power_off_on_switch)}: ${if (powerOffOnSwitch) onLabel else offLabel}", PowerIcon, popupIndex == 3)
                             }
                         }
                         "about" -> {
@@ -934,12 +940,14 @@ fun SettingsScreen(
                             SRow("Lyrion: ${lmsUrl.ifBlank { notSet }}", ServerIcon, highlighted == 0, vPad = rp)
                             SRow("Jellyfin: ${jellyfinUrl.ifBlank { notSet }}", FilmstripIcon, highlighted == 1, vPad = rp)
                             SRow(stringResource(R.string.settings_np_view), BackgroundMenuIcon, highlighted == 2, vPad = rp)
-                            SRow("${stringResource(R.string.menu_standby_prefix)}: ${if (standbyOnExit) onLabel else offLabel}", StandbyMenuIcon, highlighted == 3, vPad = rp)
+                            SRow("${stringResource(R.string.menu_standby_prefix)}: ${if (standbyOnExit) onLabel else offLabel}", PowerIcon, highlighted == 3, vPad = rp)
                             SRow(stringResource(R.string.settings_player), Icons.Filled.PlayArrow, highlighted == 4, vPad = rp)
                             if (hasCancel) {
-                                SRow(stringResource(R.string.settings_mymusic_items), null, highlighted == 5, vPad = rp)
-                                SRow(stringResource(R.string.settings_about), Icons.Outlined.Info, highlighted == 6, vPad = rp)
+                                SRow(stringResource(R.string.settings_mymusic_items), MyMusicIcon, highlighted == 5, vPad = rp)
+                                SRow("${stringResource(R.string.settings_check_updates)}: ${if (checkUpdates) onLabel else offLabel}", Icons.Filled.Refresh, highlighted == 6, vPad = rp)
+                                SRow(stringResource(R.string.settings_about), Icons.Outlined.Info, highlighted == 7, vPad = rp)
                             } else {
+                                SRow("${stringResource(R.string.settings_check_updates)}: ${if (checkUpdates) onLabel else offLabel}", Icons.Filled.Refresh, highlighted == 5, vPad = rp)
                                 SRow(stringResource(R.string.settings_save_and_start), null, highlighted == saveRow, vPad = rp, bold = true)
                             }
                         }
