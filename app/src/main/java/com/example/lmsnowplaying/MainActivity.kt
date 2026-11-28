@@ -21,6 +21,8 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
 import com.example.lmsnowplaying.composable.ExitConfirmDialog
 import com.example.lmsnowplaying.composable.PluginTipDialog
+import com.example.lmsnowplaying.composable.UpdateDialog
+import com.example.lmsnowplaying.helpers.UpdateChecker
 import com.example.lmsnowplaying.network.jellyfin.JellyfinApi
 import com.example.lmsnowplaying.network.logitechmediaserver.LMS
 import com.example.lmsnowplaying.settings.AppConfig
@@ -121,6 +123,12 @@ class MainActivity : ComponentActivity() {
 
             // "loading" while checking stored settings, then "setup" or "ready"
             var screenState by remember { mutableStateOf("loading") }
+
+            // New release found at the start (checked once a day at most)
+            var updateRelease by remember { mutableStateOf<UpdateChecker.Release?>(null) }
+            LaunchedEffect(screenState) {
+                if (screenState == "ready") UpdateChecker.checkOnStart(context)?.let { updateRelease = it }
+            }
 
             LaunchedEffect(Unit) {
                 val resolved = AppConfig.load(context)
@@ -228,6 +236,11 @@ class MainActivity : ComponentActivity() {
                                     showPluginTip = false
                                     scope.launch { SettingsRepository.markPluginTipShown(context) }
                                 })
+                            }
+                            updateRelease?.let { r ->
+                                if (!showPluginTip && !showVolumeTip) {
+                                    UpdateDialog(r, UpdateChecker.currentVersion(context), onDismiss = { updateRelease = null })
+                                }
                             }
                         }
                     }

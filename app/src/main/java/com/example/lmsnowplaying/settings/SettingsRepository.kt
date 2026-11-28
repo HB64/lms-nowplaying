@@ -237,6 +237,14 @@ object SettingsRepository {
     // One-time "this app works best with SugarCube + Don't Stop The Music"
     // tip, shown once on first launch and then never again.
     private val PLUGIN_TIP_SHOWN = booleanPreferencesKey("plugin_tip_shown")
+    private val LAST_UPDATE_CHECK = stringPreferencesKey("last_update_check")
+
+    suspend fun lastUpdateCheck(context: Context): String =
+        context.dataStore.data.map { it[LAST_UPDATE_CHECK] ?: "" }.first()
+
+    suspend fun markUpdateChecked(context: Context, date: String) {
+        context.dataStore.edit { prefs -> prefs[LAST_UPDATE_CHECK] = date }
+    }
 
     suspend fun hasShownPluginTip(context: Context): Boolean =
         context.dataStore.data.map { it[PLUGIN_TIP_SHOWN] ?: false }.first()

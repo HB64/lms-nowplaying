@@ -48,6 +48,9 @@ fun PluginTipDialog(
     onDismiss: () -> Unit,
     titleRes: Int = R.string.plugin_tip_title,
     bodyRes: Int = R.string.plugin_tip_body,
+    titleText: String? = null,
+    bodyText: String? = null,
+    okRes: Int = R.string.plugin_tip_ok,
 ) {
 
     val okInteractionSource = remember { MutableInteractionSource() }
@@ -99,13 +102,13 @@ fun PluginTipDialog(
                 .padding(24.dp)
         ) {
             Text(
-                text = stringResource(titleRes),
+                text = titleText ?: stringResource(titleRes),
                 color = Color.White,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
             )
             Text(
-                text = stringResource(bodyRes),
+                text = bodyText ?: stringResource(bodyRes),
                 color = Color.White.copy(alpha = 0.85f),
                 fontSize = 15.sp,
                 modifier = Modifier.padding(top = 12.dp),
@@ -121,7 +124,7 @@ fun PluginTipDialog(
                     .background(if (okFocused) Color.White.copy(alpha = 0.3f) else Color.Transparent)
             ) {
                 Text(
-                    text = stringResource(R.string.plugin_tip_ok),
+                    text = stringResource(okRes),
                     color = Color.White,
                     fontWeight = FontWeight.SemiBold,
                 )
