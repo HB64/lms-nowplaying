@@ -168,6 +168,8 @@ object LMS{
     private val lmsApi get() = ApiClient.apiService
 
     var isPlaying: Boolean = false
+    // The server reports "stop" (idle: the next play starts the track from the beginning)
+    @Volatile var isStopped: Boolean = false
     @Volatile var volume: Int = 0
     @Volatile var volumeMuted: Boolean = false
     @Volatile var volumeControl: Boolean = false
@@ -621,6 +623,7 @@ object LMS{
             val getObject = obj.getJSONObject("result")
             val mode = getObject.optString("mode", "")
             isPlaying = mode == "play"
+            isStopped = mode == "stop"
             // A stopped player starts the track from the beginning, but the server can keep reporting
             // the old position: show 0 then (as Material does)
             elapsedTime = if (mode == "stop") 0.0 else getObject.optDouble("time", 0.0).let { if (it.isNaN()) 0.0 else it }

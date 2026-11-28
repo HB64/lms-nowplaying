@@ -150,6 +150,8 @@ fun PlayerScreen(){
     var streamService by remember { mutableStateOf("") }
     var playing by remember { mutableStateOf(LMS.isPlaying) }
     var elapsedTime by remember { mutableStateOf(LMS.elapsedTime) }
+    // Player stopped: the bar stays at 0:00 and cannot be moved (the server would start at the beginning anyway)
+    var stopped by remember { mutableStateOf(LMS.isStopped) }
     var trackDuration by remember { mutableStateOf(LMS.trackDuration) }
 
     // Seeking with the progress bar: left/right move a pending target, which
@@ -228,6 +230,8 @@ fun PlayerScreen(){
                 CoroutineScope(Dispatchers.IO).launch{
                     LMS.status()
                     playing = LMS.isPlaying
+                    stopped = LMS.isStopped
+                    if (stopped) seekTarget = null
                     // Don't let a poll that is still in flight undo a fresh seek
                     if (System.currentTimeMillis() - lastSeekAt > 1500) elapsedTime = LMS.elapsedTime
                     trackDuration = LMS.trackDuration
@@ -717,7 +721,7 @@ fun PlayerScreen(){
                         .weight(1f)
                         .height(16.dp)
                         .onKeyEvent { event ->
-                            if (event.type != androidx.compose.ui.input.key.KeyEventType.KeyDown || trackDuration <= 0.0) return@onKeyEvent false
+                            if (event.type != androidx.compose.ui.input.key.KeyEventType.KeyDown || trackDuration <= 0.0 || stopped) return@onKeyEvent false
                             val dir = when (event.key) {
                                 androidx.compose.ui.input.key.Key.DirectionLeft -> -1
                                 androidx.compose.ui.input.key.Key.DirectionRight -> 1
@@ -736,7 +740,7 @@ fun PlayerScreen(){
                             seekKick++
                             true
                         }
-                        .focusable(enabled = trackDuration > 0.0, interactionSource = seekSource)
+                        .focusable(enabled = trackDuration > 0.0 && !stopped, interactionSource = seekSource)
                 ) {
                     val barHeight = (if (seekFocused) 8.dp else 4.dp).toPx()
                     val dotRadius = (if (seekFocused) 7.5.dp else 3.5.dp).toPx()
@@ -901,6 +905,7 @@ fun PlayerScreen(){
                         if (LMS.playerMac != "00:00:00:00:00:00") {
                             val newPlaying = !playing
                             playing = newPlaying
+                            if (newPlaying) stopped = false
                             CoroutineScope(Dispatchers.IO).launch {
                                 // Explicitly wake the player before resuming
                                 // playback - some players (e.g. Squeezelite)
@@ -926,6 +931,8 @@ fun PlayerScreen(){
                 val stopPlayback: () -> Unit = {
                     if (LMS.playerMac != "00:00:00:00:00:00") {
                         playing = false
+                        stopped = true
+                        seekTarget = null
                         elapsedTime = 0.0
                         lastSeekAt = System.currentTimeMillis()
                         CoroutineScope(Dispatchers.IO).launch { LMS.stop() }
