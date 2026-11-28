@@ -36,6 +36,7 @@ fun HandleButton(keyEvent: KeyEvent){
                 Key.MediaRewind -> LMS.prev()
                 Key.MediaPause -> LMS.playPause(false)
                 Key.MediaPlay -> LMS.playPause(true)
+                Key.MediaStop -> LMS.stop()
             }
         }
     }
