@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
@@ -79,11 +80,12 @@ fun MyUI() {
     data.clear()
     data.addAll(LMS.players.filter { it.second !in AppConfig.current.hiddenPlayers })
 
-    // Keep the player list fresh: players come and go (e.g. a player app
-    // that is still connecting). 10 s normally, 2 s after a player app start.
+    // Keep the player list fresh: players come and go (e.g. a player app that is still
+    // connecting) and their power state changes elsewhere. Every 2 s while the menu is open
+    // and for a minute after a player app start, otherwise every 10 s.
     LaunchedEffect(Unit) {
         while (true) {
-            val fast = System.currentTimeMillis() < LocalPlayer.fastRefreshUntil
+            val fast = System.currentTimeMillis() < LocalPlayer.fastRefreshUntil || NavState.menuOpen
             kotlinx.coroutines.delay(if (fast) 2000L else 10000L)
             withContext(Dispatchers.IO) {
                 LMS.getPlayers()
@@ -106,6 +108,10 @@ fun MyUI() {
     val menuButtonFocusRequester = remember { FocusRequester() }
     var wasExpanded by remember { mutableStateOf(false) }
     var menuButtonHasFocus by remember { mutableStateOf(false) }
+    // Fresh list the moment the menu opens
+    LaunchedEffect(expanded) {
+        if (expanded) withContext(Dispatchers.IO) { LMS.getPlayers() }
+    }
     // NavState.menuClosedAt: when the menu closed last. The Enter press that
     // closed it must not also "click" the ⋮ button that gets focus back and
     // reopen the menu.
@@ -231,6 +237,10 @@ fun MyUI() {
             // true: the list is the choice of the default player (with "None" on top)
             var pickDefault by remember { mutableStateOf(false) }
             var playerIndex by remember { mutableStateOf(0) }
+            // true: the power icon of the highlighted player has the focus (Right), OK switches it
+            var powerFocus by remember { mutableStateOf(false) }
+            // Same for the power icon on the "Players" row of the menu (the active player)
+            var menuPowerFocus by remember { mutableStateOf(false) }
             var highlightedIndex by remember {
                 mutableStateOf(if (returningFromSettings) settingsRowIndex else 0)
             }
@@ -307,6 +317,25 @@ fun MyUI() {
                             val extras = if (pickDefault) 0 else (if (hasDefaultRow) 1 else 0) + (if (hasOnlyRow) 1 else 0)
                             val n = listN + extras
                             if (n == 0) { playersMode = false; pickDefault = false; return@onKeyEvent true }
+                            val onPlayerRow = !pickDefault && playerIndex in 0 until listN
+                            if (!onPlayerRow) powerFocus = false
+                            if (onPlayerRow && !powerFocus && event.key == Key.DirectionRight) {
+                                powerFocus = true
+                                return@onKeyEvent true
+                            }
+                            if (onPlayerRow && powerFocus) {
+                                when (event.key) {
+                                    Key.DirectionLeft, Key.Back -> { powerFocus = false; return@onKeyEvent true }
+                                    Key.DirectionRight -> return@onKeyEvent true
+                                    Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
+                                        val mac = shownList[playerIndex].second
+                                        val newOn = !(LMS.playerPower[mac] ?: true)
+                                        CoroutineScope(Dispatchers.IO).launch { LMS.setPlayerPower(mac, newOn) }
+                                        return@onKeyEvent true
+                                    }
+                                    else -> {}
+                                }
+                            }
                             when (event.key) {
                                 Key.DirectionDown -> playerIndex = (playerIndex + 1) % n
                                 Key.DirectionUp -> playerIndex = (playerIndex - 1 + n) % n
@@ -356,6 +385,27 @@ fun MyUI() {
                                 else -> {}
                             }
                             return@onKeyEvent true
+                        }
+                        if (highlightedIndex != playersRowIndex) menuPowerFocus = false
+                        if (highlightedIndex == playersRowIndex && LMS.playerMac != "00:00:00:00:00:00") {
+                            if (!menuPowerFocus && event.key == Key.DirectionRight) {
+                                menuPowerFocus = true
+                                return@onKeyEvent true
+                            }
+                            if (menuPowerFocus) {
+                                when (event.key) {
+                                    Key.DirectionLeft, Key.Back -> { menuPowerFocus = false; return@onKeyEvent true }
+                                    Key.DirectionRight -> return@onKeyEvent true
+                                    Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
+                                        val mac = LMS.playerMac
+                                        val newOn = !(LMS.playerPower[mac] ?: true)
+                                        CoroutineScope(Dispatchers.IO).launch { LMS.setPlayerPower(mac, newOn) }
+                                        return@onKeyEvent true
+                                    }
+                                    Key.DirectionUp, Key.DirectionDown -> menuPowerFocus = false
+                                    else -> {}
+                                }
+                            }
                         }
                         when (event.key) {
                             Key.DirectionDown -> {
@@ -469,6 +519,25 @@ fun MyUI() {
                                     modifier = Modifier.size(16.dp)
                                 )
                             }
+                            // Power state: bright when on, dim when off; Right moves the focus here, OK switches it
+                            if (!pickDefault) {
+                                val powerOn = LMS.playerPower[itemValue.second] ?: true
+                                val iconFocused = powerFocus && playerIndex == itemIndex
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier
+                                        .padding(start = 8.dp)
+                                        .size(28.dp)
+                                        .background(if (iconFocused) Color.White.copy(alpha = 0.35f) else Color.Transparent, CircleShape)
+                                ) {
+                                    Icon(
+                                        imageVector = PowerIcon,
+                                        contentDescription = null,
+                                        tint = Color.White.copy(alpha = if (powerOn) 0.95f else 0.3f),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -501,7 +570,27 @@ fun MyUI() {
                         text = stringResource(R.string.menu_players_header) +
                             if (LMS.playerName.isNotBlank()) ": ${LMS.playerName}" else "",
                         icon = playerIcon(currentModel?.first ?: "", currentModel?.second ?: ""),
-                        highlighted = highlightedIndex == playersRowIndex
+                        highlighted = highlightedIndex == playersRowIndex,
+                        trailing = {
+                            // Power of the active player: Right moves the focus here, OK switches it
+                            if (LMS.playerMac != "00:00:00:00:00:00") {
+                                val powerOn = LMS.playerPower[LMS.playerMac] ?: true
+                                val iconFocused = menuPowerFocus && highlightedIndex == playersRowIndex
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .background(if (iconFocused) Color.White.copy(alpha = 0.35f) else Color.Transparent, CircleShape)
+                                ) {
+                                    Icon(
+                                        imageVector = PowerIcon,
+                                        contentDescription = null,
+                                        tint = Color.White.copy(alpha = if (powerOn) 0.95f else 0.3f),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        }
                     )
                 }
 
@@ -537,7 +626,7 @@ fun MyUI() {
 
 // A row in the ⋮ menu: icon, then text; highlighted while the D-pad is on it.
 @Composable
-private fun MenuRow(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector?, highlighted: Boolean) {
+private fun MenuRow(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector?, highlighted: Boolean, trailing: (@Composable () -> Unit)? = null) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
@@ -552,7 +641,8 @@ private fun MenuRow(text: String, icon: androidx.compose.ui.graphics.vector.Imag
         }
         Text(
             text = text, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(start = 10.dp)
+            modifier = if (trailing != null) Modifier.weight(1f).padding(start = 10.dp) else Modifier.padding(start = 10.dp)
         )
+        trailing?.invoke()
     }
 }

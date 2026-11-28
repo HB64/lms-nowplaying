@@ -113,14 +113,24 @@ object NavState {
     // When the volume was last changed here (ms): the slider shows for a few
     // seconds after, and the polled value is ignored briefly so it doesn't jump back.
     var volumeShownAt by mutableStateOf(0L)
+    // When the volume was last changed by this app itself (not by the player): only then is the polled value ignored
+    var volumeLocalAt = 0L
+
+    // The volume the server reported at the previous poll (and for which player), to notice a
+    // change made on the player itself (knob, remote, Material): the slider then shows for a moment.
+    var lastServerVolume = -1
+    var lastServerMuted = false
+    var lastServerMac = ""
 
     fun bumpVolume(delta: Int) {
         volume = (volume + delta).coerceIn(0, 100)
         volumeShownAt = System.currentTimeMillis()
+        volumeLocalAt = volumeShownAt
     }
 
     fun toggleMuteLocal() {
         volumeMuted = !volumeMuted
         volumeShownAt = System.currentTimeMillis()
+        volumeLocalAt = volumeShownAt
     }
 }

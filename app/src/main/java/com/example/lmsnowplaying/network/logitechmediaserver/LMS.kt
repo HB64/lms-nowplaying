@@ -257,6 +257,8 @@ object LMS{
 
     // mac -> IP address (without port) the server sees the player on
     var playerIps: Map<String, String> = emptyMap()
+    // Power state per player (true = on), as the server reports it in the "players" list
+    var playerPower: Map<String, Boolean> = emptyMap()
         private set
 
     // Bumped whenever the visible player list changes, so the menu can redraw.
@@ -315,22 +317,25 @@ object LMS{
             val fresh: MutableList<Pair<String, String>> = arrayListOf()
             val freshModels = HashMap<String, Pair<String, String>>()
             val freshIps = HashMap<String, String>()
+            val freshPower = HashMap<String, Boolean>()
             for (i in 0 until loop.length()) {
                 val item = loop.getJSONObject(i)
                 val name = item.getString("name")
                 val player_mac = item.getString("playerid")
                 freshModels[player_mac] = Pair(item.optString("model", ""), item.optString("modelname", ""))
                 freshIps[player_mac] = item.optString("ip", "").substringBeforeLast(':')
+                freshPower[player_mac] = item.optInt("power", 1) == 1
                 // The server also lists players that are offline (e.g. a player
                 // app that is not running). Hide those.
                 if (item.optInt("connected", 1) == 1) fresh.add(Pair(name, player_mac))
             }
             val freshGroups = fetchSyncGroups()
-            val changed = fresh != players || freshGroups != syncGroups
+            val changed = fresh != players || freshGroups != syncGroups || freshPower != playerPower
             syncGroups = freshGroups
             players = fresh
             playerModels = freshModels
             playerIps = freshIps
+            playerPower = freshPower
             if (changed) playersVersion.value = playersVersion.value + 1
 
             // The selected player went offline (e.g. a player app was stopped): it is
@@ -501,6 +506,14 @@ object LMS{
         powerFor(playerMac, on)
     }
 
+    // Power switch of one player from the player list; the server applies the player's own
+    // setting for pausing and resuming. The list is updated at once, the server follows.
+    suspend fun setPlayerPower(mac: String, on: Boolean) {
+        playerPower = playerPower + (mac to on)
+        playersVersion.value = playersVersion.value + 1
+        powerFor(mac, on)
+    }
+
     private suspend fun powerFor(mac: String, on: Boolean){
         if (mac == "00:00:00:00:00:00") return
         safeCall("powerFor", Unit) {
@@ -508,6 +521,15 @@ object LMS{
             val reqString = "{\"method\": \"slim.request\", \"params\": [\"$mac\", [\"power\", \"$powerValue\"]]}"
             val requestBody = reqString.toRequestBody("application/json".toMediaTypeOrNull())
             lmsApi.power(requestBody)
+        }
+    }
+
+    // Volume of the current player right now (one small request): negative when muted, null on failure.
+    suspend fun fetchVolume(): Int? {
+        if (playerMac == "00:00:00:00:00:00") return null
+        return safeCall<Int?>("fetchVolume", null) {
+            val res = rpcPlayer(playerMac, listOf("mixer", "volume", "?"))
+            if (res.has("_volume")) res.optInt("_volume") else null
         }
     }
 

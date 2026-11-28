@@ -62,6 +62,7 @@ object DeviceVolume {
             try { change(deltaPercent) } catch (_: Exception) { }
             NavState.volume = percent()
             NavState.volumeShownAt = System.currentTimeMillis()
+            NavState.volumeLocalAt = NavState.volumeShownAt
         } else {
             NavState.bumpVolume(deltaPercent)
             CoroutineScope(Dispatchers.IO).launch { LMS.changeVolume(deltaPercent) }
@@ -73,6 +74,7 @@ object DeviceVolume {
             try { audio()?.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_TOGGLE_MUTE, 0) } catch (_: Exception) { }
             NavState.volumeMuted = isMuted()
             NavState.volumeShownAt = System.currentTimeMillis()
+            NavState.volumeLocalAt = NavState.volumeShownAt
         } else {
             NavState.toggleMuteLocal()
             CoroutineScope(Dispatchers.IO).launch { LMS.toggleMute() }

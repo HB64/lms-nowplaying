@@ -109,6 +109,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 
 
@@ -235,14 +236,25 @@ fun PlayerScreen(){
                     val deviceMode = DeviceVolume.active()
                     NavState.deviceVolumeMode = deviceMode
                     NavState.volumeAdjustable = LMS.volumeControl || deviceMode
+                    // A change on the player itself (or elsewhere): the server value differs from the
+                    // previous poll of the same player. Not for the first poll, not in device mode.
+                    val serverVolume = LMS.volume
+                    val serverMuted = LMS.volumeMuted
+                    val changedOnPlayer = !deviceMode && LMS.volumeControl &&
+                        NavState.lastServerMac == LMS.playerMac && NavState.lastServerVolume >= 0 &&
+                        (serverVolume != NavState.lastServerVolume || serverMuted != NavState.lastServerMuted)
+                    NavState.lastServerMac = LMS.playerMac
+                    NavState.lastServerVolume = serverVolume
+                    NavState.lastServerMuted = serverMuted
                     // Right after a local change the server may still report the old value
-                    if (System.currentTimeMillis() - NavState.volumeShownAt > 2500) {
+                    if (System.currentTimeMillis() - NavState.volumeLocalAt > 2500) {
                         if (deviceMode) {
                             NavState.volume = DeviceVolume.percent()
                             NavState.volumeMuted = DeviceVolume.isMuted()
                         } else {
-                            NavState.volume = LMS.volume
-                            NavState.volumeMuted = LMS.volumeMuted
+                            NavState.volume = serverVolume
+                            NavState.volumeMuted = serverMuted
+                            if (changedOnPlayer) NavState.volumeShownAt = System.currentTimeMillis()
                         }
                     }
                 }
@@ -480,6 +492,30 @@ fun PlayerScreen(){
             }
             if (idle > 30_000) {
                 NavState.focusRingHidden = true
+            }
+        }
+    }
+
+    // While the volume slider shows after a change on the player itself, follow the player's
+    // volume twice a second (one small request), so the slider keeps up with a turning knob.
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(500)
+            val now = System.currentTimeMillis()
+            if (now - NavState.volumeShownAt < 4000 && now - NavState.volumeLocalAt > 2500 &&
+                !NavState.deviceVolumeMode && NavState.volumeAdjustable && LMS.playerMac != "00:00:00:00:00:00") {
+                val mac = LMS.playerMac
+                val signed = withContext(Dispatchers.IO) { LMS.fetchVolume() } ?: continue
+                if (mac != LMS.playerMac) continue
+                val v = Math.abs(signed)
+                val m = signed < 0
+                if (v != NavState.lastServerVolume || m != NavState.lastServerMuted) {
+                    NavState.volume = v
+                    NavState.volumeMuted = m
+                    NavState.lastServerVolume = v
+                    NavState.lastServerMuted = m
+                    NavState.volumeShownAt = System.currentTimeMillis()
+                }
             }
         }
     }
