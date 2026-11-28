@@ -81,7 +81,7 @@ class MainActivity : ComponentActivity() {
         // mid-request by the exitProcess() call right after.
         if (AppConfig.current.standbyOnExit && AppConfig.current.lmsUrl.isNotBlank()) {
             runBlocking(Dispatchers.IO) {
-                LMS.playPause(false)
+                // Only power off: the server pauses or stops by itself, as set for that player
                 LMS.power(false)
             }
         }
@@ -279,7 +279,7 @@ class MainActivity : ComponentActivity() {
         }
         if (AppConfig.current.standbyOnExit && AppConfig.current.lmsUrl.isNotBlank()) {
             runBlocking(Dispatchers.IO) {
-                LMS.playPause(false)
+                // Only power off: the server pauses or stops by itself, as set for that player
                 LMS.power(false)
             }
         }
