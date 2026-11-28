@@ -9,7 +9,7 @@
 - **"Switch off player when switching"** in Player settings (off by default).
 
 ### Fixes
-- **Queue panel**: no more getting stuck in the button row when the current track is not in the list.
+- **Queue panel**: no more getting stuck in the button row.
 - **The text next to the cover** is centred against the cover.
 - **The Now playing settings page scrolls**, with a hint that there is more below.
 - **The menu and a tip no longer fight for the focus** (the "Got it" button flickered).
