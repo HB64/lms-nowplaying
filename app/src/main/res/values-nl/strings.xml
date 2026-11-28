@@ -285,6 +285,10 @@
     <string name="exit_confirm_yes">Ja</string>
     <string name="settings_power_off_on_switch">Speler uitzetten bij wisselen</string>
     <string name="settings_check_updates">Controleren op updates</string>
+    <string name="update_checking">Controleren op updates…</string>
+    <string name="update_check_failed">Controleren op updates mislukt</string>
+    <string name="update_up_to_date">Up-to-date</string>
+    <string name="update_available_line">Update beschikbaar: %1$s</string>
     <string name="update_title">Update beschikbaar</string>
     <string name="update_body">Versie %1$s is beschikbaar (je hebt %2$s).\n\n%3$s\n\nJe kunt hem downloaden via de GitHub-releasepagina.</string>
     <string name="update_ok">OK</string>

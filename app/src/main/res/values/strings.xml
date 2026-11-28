@@ -285,6 +285,10 @@
     <string name="exit_confirm_yes">Yes</string>
     <string name="settings_power_off_on_switch">Switch off player when switching</string>
     <string name="settings_check_updates">Check for updates</string>
+    <string name="update_checking">Checking for updates…</string>
+    <string name="update_check_failed">Could not check for updates</string>
+    <string name="update_up_to_date">Up to date</string>
+    <string name="update_available_line">Update available: %1$s</string>
     <string name="update_title">Update available</string>
     <string name="update_body">Version %1$s is available (you have %2$s).\n\n%3$s\n\nYou can download it from the GitHub releases page.</string>
     <string name="update_ok">OK</string>

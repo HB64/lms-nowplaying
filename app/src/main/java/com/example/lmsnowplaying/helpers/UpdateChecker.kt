@@ -35,6 +35,9 @@ object UpdateChecker {
         return if (isNewer(release.version, currentVersion(context))) release else null
     }
 
+    // Asks GitHub right now (About screen); null when it cannot be reached.
+    suspend fun latestRelease(): Release? = withContext(Dispatchers.IO) { fetchLatest() }
+
     fun currentVersion(context: Context): String =
         try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "" } catch (_: Exception) { "" }
 

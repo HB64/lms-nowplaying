@@ -86,6 +86,7 @@ import com.example.lmsnowplaying.composable.PowerIcon
 import com.example.lmsnowplaying.composable.ServerIcon
 import com.example.lmsnowplaying.composable.SettingsMenuIcon
 import com.example.lmsnowplaying.composable.StandbyMenuIcon
+import com.example.lmsnowplaying.helpers.UpdateChecker
 import com.example.lmsnowplaying.composable.VolumeIcon
 import com.example.lmsnowplaying.settings.SettingsRepository
 import kotlinx.coroutines.Dispatchers
@@ -751,6 +752,25 @@ fun SettingsScreen(
                         "about" -> {
                             SRow(stringResource(R.string.settings_about), Icons.Outlined.Info, false, bold = true)
                             SRow("LMS-NowPlaying ${BuildConfig.VERSION_NAME}", null, false, dim = true)
+                            // 0 checking, 1 not reachable, 2 up to date, 3 newer version available
+                            var aboutCheck by remember { mutableStateOf(0) }
+                            var aboutLatest by remember { mutableStateOf("") }
+                            LaunchedEffect(Unit) {
+                                val r = UpdateChecker.latestRelease()
+                                if (r == null) aboutCheck = 1 else {
+                                    aboutLatest = r.version
+                                    aboutCheck = if (UpdateChecker.isNewer(r.version, BuildConfig.VERSION_NAME)) 3 else 2
+                                }
+                            }
+                            SRow(
+                                when (aboutCheck) {
+                                    0 -> stringResource(R.string.update_checking)
+                                    1 -> stringResource(R.string.update_check_failed)
+                                    2 -> stringResource(R.string.update_up_to_date)
+                                    else -> stringResource(R.string.update_available_line, aboutLatest)
+                                },
+                                null, false, dim = aboutCheck != 3, bold = aboutCheck == 3
+                            )
                             LaunchedEffect(popupIndex) { aboutState.scrollToItem(popupIndex) }
                             LazyColumn(state = aboutState, modifier = Modifier.heightIn(max = 300.dp)) {
                                 items(aboutLines.size) { i ->
