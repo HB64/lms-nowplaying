@@ -590,7 +590,8 @@ fun MyUI() {
                         MenuRow(
                             text = "${stringResource(R.string.menu_only_control_default)}: ${stringResource(if (AppConfig.current.onlyControlDefault) R.string.menu_standby_on else R.string.menu_standby_off)}",
                             icon = null,
-                            highlighted = playerIndex == listSize + 1
+                            highlighted = playerIndex == listSize + 1,
+                            maxLines = 2
                         )
                     }
                 }
@@ -663,7 +664,7 @@ private fun alarmLabel(at: Long): String =
 
 // A row in the ⋮ menu: icon, then text; highlighted while the D-pad is on it.
 @Composable
-private fun MenuRow(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector?, highlighted: Boolean, trailing: (@Composable () -> Unit)? = null) {
+private fun MenuRow(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector?, highlighted: Boolean, trailing: (@Composable () -> Unit)? = null, maxLines: Int = 1) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
@@ -677,7 +678,7 @@ private fun MenuRow(text: String, icon: androidx.compose.ui.graphics.vector.Imag
             Box(Modifier.size(18.dp))
         }
         Text(
-            text = text, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            text = text, color = Color.White, maxLines = maxLines, overflow = TextOverflow.Ellipsis,
             modifier = if (trailing != null) Modifier.weight(1f).padding(start = 10.dp) else Modifier.padding(start = 10.dp)
         )
         trailing?.invoke()
