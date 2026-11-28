@@ -241,6 +241,13 @@ fun MyUI() {
             var powerFocus by remember { mutableStateOf(false) }
             // Same for the power icon on the "Players" row of the menu (the active player)
             var menuPowerFocus by remember { mutableStateOf(false) }
+            // Alarms are only read while the player list is open: now, then every 30 s
+            LaunchedEffect(playersMode) {
+                while (playersMode) {
+                    withContext(Dispatchers.IO) { LMS.refreshAlarms() }
+                    kotlinx.coroutines.delay(30_000L)
+                }
+            }
             var highlightedIndex by remember {
                 mutableStateOf(if (returningFromSettings) settingsRowIndex else 0)
             }
@@ -510,6 +517,23 @@ fun MyUI() {
                                     .weight(1f)
                                     .padding(horizontal = 10.dp)
                             )
+                            // Next alarm of the player (display only)
+                            val alarmAt = if (pickDefault) null else LMS.nextAlarm[itemValue.second]
+                            if (alarmAt != null) {
+                                Icon(
+                                    imageVector = AlarmIcon,
+                                    contentDescription = null,
+                                    tint = Color.White.copy(alpha = 0.7f),
+                                    modifier = Modifier.padding(end = 4.dp).size(14.dp)
+                                )
+                                Text(
+                                    text = alarmLabel(alarmAt),
+                                    color = Color.White.copy(alpha = 0.7f),
+                                    fontSize = 12.sp,
+                                    maxLines = 1,
+                                    modifier = Modifier.padding(end = 8.dp)
+                                )
+                            }
                             // Players that are synchronized with another one
                             if (LMS.syncGroups.any { itemValue.second in it }) {
                                 Icon(
@@ -622,6 +646,16 @@ fun MyUI() {
             }
         }
     }
+}
+
+// "06:00" when the alarm is today, otherwise with the day: "ma 06:00".
+private fun alarmLabel(at: Long): String {
+    val now = java.util.Calendar.getInstance()
+    val then = java.util.Calendar.getInstance().apply { timeInMillis = at }
+    val sameDay = now.get(java.util.Calendar.YEAR) == then.get(java.util.Calendar.YEAR) &&
+        now.get(java.util.Calendar.DAY_OF_YEAR) == then.get(java.util.Calendar.DAY_OF_YEAR)
+    val pattern = if (sameDay) "HH:mm" else "EEE HH:mm"
+    return java.text.SimpleDateFormat(pattern, java.util.Locale.getDefault()).format(java.util.Date(at))
 }
 
 // A row in the ⋮ menu: icon, then text; highlighted while the D-pad is on it.

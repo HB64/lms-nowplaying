@@ -259,6 +259,8 @@ object LMS{
     var playerIps: Map<String, String> = emptyMap()
     // Power state per player (true = on), as the server reports it in the "players" list
     var playerPower: Map<String, Boolean> = emptyMap()
+    // Next alarm per player (epoch ms), only for players with an enabled alarm; shown in the player list
+    var nextAlarm: Map<String, Long> = emptyMap()
         private set
 
     // Bumped whenever the visible player list changes, so the menu can redraw.
@@ -521,6 +523,49 @@ object LMS{
             val reqString = "{\"method\": \"slim.request\", \"params\": [\"$mac\", [\"power\", \"$powerValue\"]]}"
             val requestBody = reqString.toRequestBody("application/json".toMediaTypeOrNull())
             lmsApi.power(requestBody)
+        }
+    }
+
+    // The next time an alarm with these days (0 = Sunday ... 6 = Saturday) goes off, from now on.
+    private fun nextAlarmMillis(secondsOfDay: Long, days: Set<Int>): Long? {
+        val now = System.currentTimeMillis()
+        for (d in 0..7) {
+            val c = java.util.Calendar.getInstance()
+            c.add(java.util.Calendar.DAY_OF_YEAR, d)
+            c.set(java.util.Calendar.HOUR_OF_DAY, (secondsOfDay / 3600).toInt())
+            c.set(java.util.Calendar.MINUTE, ((secondsOfDay % 3600) / 60).toInt())
+            c.set(java.util.Calendar.SECOND, (secondsOfDay % 60).toInt())
+            c.set(java.util.Calendar.MILLISECOND, 0)
+            if (c.timeInMillis > now && (c.get(java.util.Calendar.DAY_OF_WEEK) - 1) in days) return c.timeInMillis
+        }
+        return null
+    }
+
+    // Reads the alarms of all listed players, or only of "only" (display only): per player the next
+    // enabled alarm. A player with its alarms switched off ("alarmsEnabled" 0) shows none.
+    suspend fun refreshAlarms(only: String? = null) {
+        val fresh = HashMap<String, Long>(if (only != null) nextAlarm else emptyMap())
+        if (only != null) fresh.remove(only)
+        for (mac in (if (only != null) listOf(only) else players.map { it.second })) {
+            safeCall("alarms", Unit) {
+                val pref = rpcPlayer(mac, listOf("playerpref", "alarmsEnabled", "?")).optString("_p2", "1")
+                if (pref == "0") return@safeCall
+                val loop = rpcPlayer(mac, listOf("alarms", 0, 20, "filter:all")).optJSONArray("alarms_loop") ?: return@safeCall
+                var best: Long? = null
+                for (i in 0 until loop.length()) {
+                    val o = loop.getJSONObject(i)
+                    if (o.optString("enabled", "0") != "1") continue
+                    val secs = o.optString("time", "").toLongOrNull() ?: continue
+                    val days = o.optString("dow", "0,1,2,3,4,5,6").split(",").mapNotNull { it.trim().toIntOrNull() }.toSet()
+                    val next = nextAlarmMillis(secs, days) ?: continue
+                    if (best == null || next < best) best = next
+                }
+                if (best != null) fresh[mac] = best
+            }
+        }
+        if (fresh != nextAlarm) {
+            nextAlarm = fresh
+            playersVersion.value = playersVersion.value + 1
         }
     }
 

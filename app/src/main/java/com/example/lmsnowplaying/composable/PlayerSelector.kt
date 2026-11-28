@@ -12,6 +12,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -25,6 +26,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.lmsnowplaying.network.logitechmediaserver.LMS
 import com.example.lmsnowplaying.settings.NavState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 @Composable
 fun PlayerSelector(pn: String){
@@ -32,6 +36,14 @@ fun PlayerSelector(pn: String){
     val _playerName by LMS.playerNameFlow.collectAsState()
     // Re-read the sync groups whenever the player list refreshes
     val _playersVersion by LMS.playersVersion.collectAsState()
+
+    // The alarm of the selected player: read now, after a change of player, and every minute
+    LaunchedEffect(_playerName) {
+        while (true) {
+            if (LMS.playerMac != "00:00:00:00:00:00") withContext(Dispatchers.IO) { LMS.refreshAlarms(LMS.playerMac) }
+            delay(60_000L)
+        }
+    }
 
     //println("LMS PLAYER NAME: " + LMS.playerName)
 
@@ -51,6 +63,16 @@ fun PlayerSelector(pn: String){
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(text = _playerName, color = Color.White.copy(alpha = 0.7f), fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                // The selected player has an alarm that is on (display only, like Material)
+                if (_playersVersion >= 0 && LMS.nextAlarm[LMS.playerMac] != null) {
+                    Spacer(Modifier.width(6.dp))
+                    Icon(
+                        imageVector = AlarmIcon,
+                        contentDescription = "Alarm",
+                        tint = Color.White.copy(alpha = 0.7f),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
                 // The selected player is synchronized with another one
                 if (_playersVersion >= 0 && LMS.syncGroups.any { LMS.playerMac in it }) {
                     Spacer(Modifier.width(6.dp))
