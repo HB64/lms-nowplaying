@@ -483,6 +483,15 @@ object LMS{
         }
     }
 
+    // Stops playback (the next play starts the track from the beginning, as in Material).
+    suspend fun stop() {
+        if (playerMac == "00:00:00:00:00:00") return
+        safeCall("stop", Unit) {
+            rpcPlayer(playerMac, listOf("stop"))
+            Unit
+        }
+    }
+
     suspend fun next(){
         if (playerMac == "00:00:00:00:00:00") return
         safeCall("next", Unit) {
@@ -612,7 +621,9 @@ object LMS{
             val getObject = obj.getJSONObject("result")
             val mode = getObject.optString("mode", "")
             isPlaying = mode == "play"
-            elapsedTime = getObject.optDouble("time", 0.0).let { if (it.isNaN()) 0.0 else it }
+            // A stopped player starts the track from the beginning, but the server can keep reporting
+            // the old position: show 0 then (as Material does)
+            elapsedTime = if (mode == "stop") 0.0 else getObject.optDouble("time", 0.0).let { if (it.isNaN()) 0.0 else it }
             trackDuration = getObject.optDouble("duration", 0.0).let { if (it.isNaN()) 0.0 else it }
             // Lyrion reports a muted player with a negative volume
             val vol = getObject.optInt("mixer volume", 100)

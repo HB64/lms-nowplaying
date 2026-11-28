@@ -508,31 +508,39 @@ fun MyUI() {
                                 tint = Color.White,
                                 modifier = Modifier.size(18.dp)
                             )
-                            Text(
-                                text = if (pickDefault) (if (itemValue.second == defaultMac) "●  " else "○  ") + itemValue.first else itemValue.first,
-                                color = Color.White,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
+                            // Name, and under it the next alarm of the player (display only, like Material)
+                            val alarmAt = if (pickDefault) null else LMS.nextAlarm[itemValue.second]
+                            Column(
+                                verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
                                 modifier = Modifier
                                     .weight(1f)
                                     .padding(horizontal = 10.dp)
-                            )
-                            // Next alarm of the player (display only)
-                            val alarmAt = if (pickDefault) null else LMS.nextAlarm[itemValue.second]
-                            if (alarmAt != null) {
-                                Icon(
-                                    imageVector = AlarmIcon,
-                                    contentDescription = null,
-                                    tint = Color.White.copy(alpha = 0.7f),
-                                    modifier = Modifier.padding(end = 4.dp).size(14.dp)
-                                )
+                            ) {
                                 Text(
-                                    text = alarmLabel(alarmAt),
-                                    color = Color.White.copy(alpha = 0.7f),
-                                    fontSize = 12.sp,
+                                    text = if (pickDefault) (if (itemValue.second == defaultMac) "●  " else "○  ") + itemValue.first else itemValue.first,
+                                    color = Color.White,
                                     maxLines = 1,
-                                    modifier = Modifier.padding(end = 8.dp)
+                                    overflow = TextOverflow.Ellipsis,
+                                    fontSize = if (alarmAt != null) 14.sp else androidx.compose.ui.unit.TextUnit.Unspecified,
+                                    lineHeight = if (alarmAt != null) 18.sp else androidx.compose.ui.unit.TextUnit.Unspecified,
                                 )
+                                if (alarmAt != null) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = AlarmIcon,
+                                            contentDescription = null,
+                                            tint = Color.White.copy(alpha = 0.7f),
+                                            modifier = Modifier.padding(end = 4.dp).size(12.dp)
+                                        )
+                                        Text(
+                                            text = alarmLabel(alarmAt),
+                                            color = Color.White.copy(alpha = 0.7f),
+                                            fontSize = 11.sp,
+                                            lineHeight = 14.sp,
+                                            maxLines = 1,
+                                        )
+                                    }
+                                }
                             }
                             // Players that are synchronized with another one
                             if (LMS.syncGroups.any { itemValue.second in it }) {
@@ -648,15 +656,9 @@ fun MyUI() {
     }
 }
 
-// "06:00" when the alarm is today, otherwise with the day: "ma 06:00".
-private fun alarmLabel(at: Long): String {
-    val now = java.util.Calendar.getInstance()
-    val then = java.util.Calendar.getInstance().apply { timeInMillis = at }
-    val sameDay = now.get(java.util.Calendar.YEAR) == then.get(java.util.Calendar.YEAR) &&
-        now.get(java.util.Calendar.DAY_OF_YEAR) == then.get(java.util.Calendar.DAY_OF_YEAR)
-    val pattern = if (sameDay) "HH:mm" else "EEE HH:mm"
-    return java.text.SimpleDateFormat(pattern, java.util.Locale.getDefault()).format(java.util.Date(at))
-}
+// Day, date and time of the alarm, in the language of the device: "ma 30 nov 06:00".
+private fun alarmLabel(at: Long): String =
+    java.text.SimpleDateFormat("EEE d MMM HH:mm", java.util.Locale.getDefault()).format(java.util.Date(at))
 
 // A row in the ⋮ menu: icon, then text; highlighted while the D-pad is on it.
 @Composable

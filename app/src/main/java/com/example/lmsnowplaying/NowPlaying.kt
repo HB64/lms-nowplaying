@@ -127,9 +127,7 @@ fun SecondaryScreen(){
     Box(contentAlignment = Alignment.Center, modifier = Modifier
         .background(Color.Blue)
         .onKeyEvent {
-            CoroutineScope(Dispatchers.IO).launch {
-                HandleButton(it)
-            }
+            HandleButton(it)
             false
         }
         .fillMaxSize()) {
@@ -898,16 +896,8 @@ fun PlayerScreen(){
                     }
                 }
 
-                FocusIconButton(
-                    size = 52.dp,
-                    modifier = Modifier
-                        .focusRequester(playFocusRequester)
-                        .onFocusChanged {
-                            playHasFocus = it.isFocused
-                            // Only a loss without recent key input counts (the remote did not cause it)
-                            playFocusLostAt = if (it.isFocused || System.currentTimeMillis() - maxOf(lastKeyTime, NavState.lastTyped) < 1500) 0L else System.currentTimeMillis()
-                        },
-                    onClick = {
+                // Short press: play or pause (wakes the player first when it is off)
+                val togglePlay: () -> Unit = {
                         if (LMS.playerMac != "00:00:00:00:00:00") {
                             val newPlaying = !playing
                             playing = newPlaying
@@ -930,7 +920,46 @@ fun PlayerScreen(){
                                 }
                             }
                         }
+                }
+                // Long press on OK: stop. The track starts from the beginning with the next play.
+                var playOkLong by remember { mutableStateOf(false) }
+                val stopPlayback: () -> Unit = {
+                    if (LMS.playerMac != "00:00:00:00:00:00") {
+                        playing = false
+                        elapsedTime = 0.0
+                        lastSeekAt = System.currentTimeMillis()
+                        CoroutineScope(Dispatchers.IO).launch { LMS.stop() }
                     }
+                }
+                FocusIconButton(
+                    size = 52.dp,
+                    modifier = Modifier
+                        .focusRequester(playFocusRequester)
+                        .onPreviewKeyEvent { e ->
+                            val k = e.key
+                            val isOk = k == androidx.compose.ui.input.key.Key.DirectionCenter ||
+                                k == androidx.compose.ui.input.key.Key.Enter || k == androidx.compose.ui.input.key.Key.NumPadEnter
+                            if (!isOk) return@onPreviewKeyEvent false
+                            when (e.type) {
+                                androidx.compose.ui.input.key.KeyEventType.KeyDown -> {
+                                    val repeat = e.nativeKeyEvent.repeatCount
+                                    if (repeat == 0) playOkLong = false
+                                    if (repeat >= 1 && !playOkLong) { playOkLong = true; stopPlayback() }
+                                    true
+                                }
+                                androidx.compose.ui.input.key.KeyEventType.KeyUp -> {
+                                    if (playOkLong) playOkLong = false else togglePlay()
+                                    true
+                                }
+                                else -> false
+                            }
+                        }
+                        .onFocusChanged {
+                            playHasFocus = it.isFocused
+                            // Only a loss without recent key input counts (the remote did not cause it)
+                            playFocusLostAt = if (it.isFocused || System.currentTimeMillis() - maxOf(lastKeyTime, NavState.lastTyped) < 1500) 0L else System.currentTimeMillis()
+                        },
+                    onClick = togglePlay
                 ) {
                     PlayPauseButton(playing)
                 }
